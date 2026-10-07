@@ -13,7 +13,7 @@ into a URL, or commit it — it lives in its env file, which gets sourced.
 |---|---|
 | Generate at | <https://starweb.grafana.net/a/grafana-auth-app> (Grafana stack `starweb`) |
 | Scopes | read-only metrics query scopes (`metrics:read`) — nothing else |
-| Save to | `~/.grafana-cloud/token.env` |
+| Save to | `~/.tokens/grafanacloud` |
 | Var name | `GRAFANA_CLOUD_TOKEN` (file is env format: `GRAFANA_CLOUD_TOKEN=<token>`) |
 | Paired with | username/instance ID `1181702` — fixed, never changes with the token |
 

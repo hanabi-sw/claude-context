@@ -32,7 +32,7 @@ never do it yourself; guide the user** (`../token-creation.md`).
 **Access:** `https://prometheus-prod-24-prod-eu-west-2.grafana.net/api/prom`
 (stack `starweb`, `mimir-prod-24`, data in AWS `eu-central-1`).
 **Auth:** HTTP basic, instance ID `1181702` + `GRAFANA_CLOUD_TOKEN` from
-`~/.grafana-cloud/token.env`. Never echo the token or put it in a file/URL/commit.
+`~/.tokens/grafanacloud`. Never echo the token or put it in a file/URL/commit.
 On `401`: token expired — minting is **user-only, never do it yourself**: guide the user
 to <https://starweb.grafana.net/a/grafana-auth-app> (read scopes only) and have them
 update the env file (ID stays `1181702`). Details: `../token-creation.md`.
@@ -40,7 +40,7 @@ update the env file (ID stays `1181702`). Details: `../token-creation.md`.
 **Query:**
 
 ```bash
-set -a; . ~/.grafana-cloud/token.env; set +a
+set -a; . ~/.tokens/grafanacloud; set +a
 PROM=https://prometheus-prod-24-prod-eu-west-2.grafana.net/api/prom
 AUTH=(-u "1181702:$GRAFANA_CLOUD_TOKEN")
 
