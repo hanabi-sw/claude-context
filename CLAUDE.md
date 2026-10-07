@@ -2,6 +2,15 @@
 
 Durable context for Claude sessions, split by topic. Read only what the task needs.
 
+## Git conventions
+
+- Commit only when the user asks; never push without an explicit go-ahead.
+- One-line Conventional Commits (`docs: …`, `fix: …`, `chore: …`), ≤ 72 chars, imperative
+  mood. **No body, no trailers** (no `Co-Authored-By`, no `Generated with`).
+- One logical change per commit: a new guide, an index update and an unrelated path fix are
+  separate commits.
+- Docs are written in the present tense — how things work now, not what was done.
+
 ## troubleshooting/prod-observability.md
 
 **Read this whenever troubleshooting or investigating anything in SWS production or
