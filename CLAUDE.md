@@ -30,6 +30,20 @@ staging**, specifically before:
 Do **not** load it for pure code work in the SWS/reverse-proxy repos that touches no
 production system.
 
+## troubleshooting/worker-queue-cron.md
+
+**Read this when the Beanstalk worker or its queue misbehaves**, specifically when:
+
+- https://starwebserver.se/app/status/cron warns `Last cron job ran … minutes ago`.
+- `sws6-production-worker` is Yellow/Red, or the `sws6-production` SQS backlog grows.
+- Queued jobs are late: order emails, ES indexing, Fortnox/Hogia/Ongoing syncs, sales reports.
+- One Aurora writer (`sws-6-1`/`sws-6-2`) is pinned and you need Performance Insights to
+  name the job and shop behind it.
+
+It holds the diagnosis order, Logs Insights / PI / SQS / S3 recipes, the command gotchas,
+what not to do, and the 2026-10-07 reference incident. Still read
+`prod-observability.md` first for auth and the read-only rules.
+
 ## token-creation.md
 
 **Read when a token is missing, expired (`401`), or needs rotating** — Grafana Cloud or
