@@ -44,6 +44,12 @@ It holds the diagnosis order, Logs Insights / PI / SQS / S3 recipes, the command
 what not to do, and the 2026-10-07 reference incident. Still read
 `prod-observability.md` first for auth and the read-only rules.
 
+## dev-env/sws-6-local.md
+
+**Read when setting up or repairing the `sws-6` local Docker dev env or running its PHPUnit
+suites** — bring-up commands, test commands, and the gotchas (Docker Hub login, `starweb`
+network, `task` install). Not needed for pure code edits in an already-running env.
+
 ## token-creation.md
 
 **Read when a token is missing, expired (`401`), or needs rotating** — Grafana Cloud or
