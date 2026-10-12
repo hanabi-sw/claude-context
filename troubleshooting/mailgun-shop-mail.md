@@ -36,6 +36,33 @@ one of them; querying the wrong region gives `404 Domain not found`.
 API timestamps are UTC. The shop host logs in local time (CEST = UTC+2 in summer), so a
 postfix line at `16:55:35` is `14:55:35Z` in Mailgun.
 
+## The two sender addresses of a shop
+
+Every NEH shop mail is sent with one of two From addresses. Which one decides the
+Mailgun domain, the DKIM signature and therefore where to look.
+
+| Address | Where it is set | Used as |
+|---|---|---|
+| **Store e-mail** ("E-post till kundtjänst") | admin → Företagsinformation (`SE_sys/admin/shop/company.html`), stored in `SE_<shop>.ShopData.service_email` | **From** on customer-facing mail (`mail-kund.txt` order confirmation, welcome, password reset, order status, product watch) and **To** on the shop's own notifications (`mail-order.txt` order copy, `mail-product-watch-admin.txt`, `mail-order-return-new.txt`, `mail-new-comment.txt`, `mail-reseller-request.txt`). Also printed as "E-post" in mail footers. Its domain is what `mailgunSyncDomains.sh` registers in Mailgun. |
+| **Platform address** `noreply@shop.nordiskehandel.com` | `System::email_support` in `/etc/shopexpo.conf` on the host, from Ansible `neh_install_my_email` (`roles/neh-install/defaults/main.yml`; per-host override in `inventory-nehcloud/host_vars/`, e.g. securitas) | **From** on the shop's own copies, shown as `Internetbutiken <noreply@shop.nordiskehandel.com>`, with `Reply-To: <customer>`. It is a sender, never a recipient. |
+
+So an order produces two mails: the confirmation **to the customer, From the store
+e-mail** (Mailgun domain = store e-mail domain), and the copy **to the store e-mail, From
+the platform address** (Mailgun domain = `shop.nordiskehandel.com`). If only one of them
+arrives, start from the domain of the missing one.
+
+```sh
+# on the shop host (sudo mariadb needs no password)
+sudo mariadb -N -e "SELECT service_email FROM SE_<shop>.ShopData"
+grep '^System::email_support' /etc/shopexpo.conf
+```
+
+The headers are the first lines of the template that produced the mail. Resolution order:
+the shop's own copy in `/home/www/SE/<shop>/mail-*.txt`, then `SE_sys/templates/mail-*.txt`
+(or `SE_sys/templates/mail/version2/` when the admin's SystemMail entry for that file has
+`layout_version=2`, where From/To/Reply-To can be overridden per mail), then plugins.
+A shop with its own template copy keeps that copy's headers.
+
 ## Which Mailgun domain did the mail go through?
 
 Postfix picks the SMTP credential from the **envelope sender domain**
