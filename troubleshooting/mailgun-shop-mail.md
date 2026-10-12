@@ -8,8 +8,11 @@ Use this when an NEH shop e-mail (order confirmation, customer mail, admin copy)
 arrive and postfix on the shop host already shows `status=sent (250 Great success)` to
 `smtp.eu.mailgun.org`. From that point only Mailgun knows what happened.
 
-Everything here is read-only. The one write at the bottom (removing a bounce suppression)
-is allowed only when the user asks for it.
+**Never do write operations against Mailgun.** Only `GET` requests: no `POST`, `PUT` or
+`DELETE`, so no creating, verifying or deleting domains or keys, no sending mail, no
+touching suppression lists or webhooks, whatever the user says. Domains are managed by
+`mailgunSyncDomains.sh`, keys by the user in the dashboard. If a write is needed, give the
+user the command to run themselves.
 
 ## Token
 
@@ -126,18 +129,16 @@ A `failed` event carries the remote server's reply in `delivery-status.message`;
 | no event for the Message-ID on domain D | postfix used another credential | the sasl maps above, then the fallback credential's domain |
 | `accepted` then `delivered` | Mailgun is done | recipient spam folder / Google Workspace quarantine (same-domain sender and recipient is often filtered) |
 | `accepted` then `failed`, code 550 | remote server rejected | the message text: no such user, DMARC or spam policy, blocklist |
-| `failed` with "Not delivering to previously bounced address" | recipient is on the domain's bounce list | remove it (below) or use another address |
+| `failed` with "Not delivering to previously bounced address" | recipient is on the domain's bounce list | user removes it (below) or uses another address |
 | `rejected` | Mailgun refused before sending | domain not active, sandbox, or recipient not authorised |
 | domain `state` ≠ `active` | DKIM/SPF not verified | shop DNS: `starweb._domainkey.<domain>` CNAME → `dkim.nordicshops.com`, SPF `include:spf-for-shops.nordicshops.com`, then rerun `mailgunSyncDomains.sh` on the host |
 
-## The one allowed write
+## Bounce suppression
 
 A hard bounce puts the address on the domain's bounce list and every later send to it is
-suppressed. Remove it only when the user asks:
+suppressed. Removing it is a `DELETE` and therefore not done from here; hand the user the
+command to run themselves:
 
 ```sh
 curl -s --user "api:$K" -X DELETE "$B/v3/$D/bounces/someone%40example.net"
 ```
-
-Never create, verify or delete domains or keys from here; that is `mailgunSyncDomains.sh`
-(domains) or the user (keys).
