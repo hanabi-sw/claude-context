@@ -47,6 +47,20 @@ Symptom of a missing login: `docker compose up` / `docker manifest inspect` fail
 so it is only repeated after a `docker logout` or a token rotation. The same file also holds
 an ECR login for `546532984119` that expires after 12 hours — unrelated to Docker Hub.
 
+## Mailgun / Sinch (NEH shop e-mail delivery logs)
+
+| | |
+|---|---|
+| Generate at | Mailgun dashboard (<https://app.eu.mailgun.com>, log in via Sinch) → account menu → **API Security** → **Mailgun API keys** → *Add new key* |
+| Kind / role | account-level **API key** with the **Support** role — enough for logs, domain list and suppression lists (a *domain sending key* cannot read logs or list domains) |
+| Save to | `~/.tokens/mailgun` |
+| Format | **raw key only**, no `VAR=` prefix (differs from the env-format files above) |
+| Used as | `curl --user "api:$(tr -d '[:space:]' < ~/.tokens/mailgun)"` against `https://api.eu.mailgun.net` (EU region, where all NEH shop domains live; the key also works on `https://api.mailgun.net`) |
+
+NEH platform only, SWS does not use Mailgun. Symptom of a bad key: `401 Forbidden`. Symptom
+of the wrong region: `404 Domain not found` for a domain that exists. Recipes are in
+`troubleshooting/mailgun-shop-mail.md`.
+
 ## AWS (CloudWatch / S3 / SQS reads)
 
 Not a mintable token — the default profile is preconfigured via `credential_process` to
