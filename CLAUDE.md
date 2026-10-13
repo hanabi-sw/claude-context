@@ -44,6 +44,22 @@ It holds the diagnosis order, Logs Insights / PI / SQS / S3 recipes, the command
 what not to do, and the 2026-10-07 reference incident. Still read
 `prod-observability.md` first for auth and the read-only rules.
 
+## NEH host troubleshooting → /home/user/code/neh-monitoring/CLAUDE.md
+
+**Read that file whenever investigating an NEH (Nordisk eHandel) host or shop** — a slow or
+locked-up shop, `MysqlDown`/`ApacheNoSlots` alerts, "what ate the box at 03:14", a customer
+reporting 429s or bans. It is the entry point for:
+
+- Prometheus / Grafana / Alertmanager endpoints, access prerequisites and silence recipes.
+- Per-process history without ssh: process-exporter (`namedprocess_namegroup_*`) PromQL recipes,
+  including how to confirm long-running apache2 workers.
+- `neh-asset-downloader.sh`: access logs, atop (per-PID, 14 days), journal and a live `ps`
+  from a host. Claude may run it; Claude never runs ssh/scp/ansible against an NEH host.
+- Sibling `/home/user/code/neh-infrastructure/CLAUDE.md` for what is deployed on a host
+  (`/etc/ansible_runs`) and its `roles/crowdsec/CLAUDE.md` for the rate-limit runbook.
+
+Not for SWS (Starweb) production — that is `prod-observability.md` above.
+
 ## troubleshooting/mailgun-shop-mail.md
 
 **Read when an NEH shop e-mail did not arrive** and postfix on the shop host already shows
