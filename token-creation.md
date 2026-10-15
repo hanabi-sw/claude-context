@@ -66,3 +66,17 @@ of the wrong region: `404 Domain not found` for a domain that exists. Recipes ar
 Not a mintable token — the default profile is preconfigured via `credential_process` to
 assume `SebastianLockwoodLowPriv`. Nothing to create or rotate here; verify with
 `aws sts get-caller-identity`. Setup of the credential helper is out of scope for this file.
+
+## Favro (ticket and board lookups)
+
+| | |
+|---|---|
+| Generate at | Favro → click the organization name top left → **Settings** → **My account** → **API tokens** → set **Read only** → *Create* (<https://favro.com/organization/d98323ed4cfac48a92f11bf7/5d907e7ad6010016b8547901?onShow=userprofile>) |
+| Scopes | **Read only** — we never write to Favro from Claude; a read-only token makes every `POST`/`PUT`/`DELETE` fail |
+| Save to | `~/.tokens/favro` |
+| Var name | `FAVRO_TOKEN` (file is env format: `FAVRO_TOKEN=<token>`) |
+| Used as | HTTP basic, user = the **Favro login e-mail** of the token owner (`sebastian.lockwood@starweb.se`, not the `sl@` alias), password = `$FAVRO_TOKEN`, plus header `organizationId: d98323ed4cfac48a92f11bf7` (Thea Commerce) |
+
+Symptom of a bad e-mail or token: `401 Something went wrong. Please check your credentials.`
+A `403 Access denied` on a card lookup means the card does not exist, not a token problem.
+Recipes are in `troubleshooting/favro-tickets.md`.
