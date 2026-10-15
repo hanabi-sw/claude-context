@@ -95,5 +95,6 @@ network, `task` install). Not needed for pure code edits in an already-running e
 ## token-creation.md
 
 **Read when a token is missing, expired (`401`), or needs rotating** — Grafana Cloud,
-Sentry, Docker Hub, Mailgun or Favro. Covers the generation page, required read scopes, env-file path and var name for
-each. Minting is **user-only**: never create a token — guide the user through it.
+Sentry, Docker Hub, Mailgun, Favro or Notion. Covers the generation page, required read
+scopes, env-file path and var name for each. Minting is **user-only**: never create a
+token — guide the user through it.
