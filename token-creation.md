@@ -61,6 +61,27 @@ NEH platform only, SWS does not use Mailgun. Symptom of a bad key: `401 Forbidde
 of the wrong region: `404 Domain not found` for a domain that exists. Recipes are in
 `troubleshooting/mailgun-shop-mail.md`.
 
+## Notion (workspace page/database reads)
+
+| | |
+|---|---|
+| Generate at | <https://app.notion.com/developers/tokens?spaceId=925978f4-601b-4534-aba1-c7f551a2ae57> — **internal integration** in the `Starweb` workspace; the current one is `thea-sw-dev-nova1` |
+| Capabilities | Content: **Read content** only; Comments: none; User info: **No user information** — nothing else |
+| Save to | `~/.tokens/notion` |
+| Var name | `NOTION_TOKEN` (file is env format: `NOTION_TOKEN=<token>`, token starts with `ntn_`) |
+| Used as | `Authorization: Bearer $NOTION_TOKEN` plus `Notion-Version: 2022-06-28` against `https://api.notion.com/v1/` |
+
+**Read-only. No write of any kind to Notion — creating, editing, moving, archiving or deleting
+pages, databases, properties or comments, through this token, the Notion MCP connector or any
+other route — without the user's explicit consent for that specific change.** The token's
+read-only capabilities are a backstop, not the rule: ask first, every time.
+
+An integration only sees pages it has been connected to: a page's **⋯ → Connections → add
+`thea-sw-dev-nova1`** (child pages inherit). Symptom of a bad or revoked token: `401` with
+`{"code":"unauthorized"}`. Symptom of a page the integration is not connected to: `404`
+`object_not_found`, or empty `search` results — fix the connection, not the token. Verify
+with `GET /v1/users/me`, which returns the bot name and `workspace_name`.
+
 ## AWS (CloudWatch / S3 / SQS reads)
 
 Not a mintable token — the default profile is preconfigured via `credential_process` to
