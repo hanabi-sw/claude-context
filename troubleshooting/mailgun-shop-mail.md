@@ -23,8 +23,6 @@ user the command to run themselves.
 | Use | `curl -s --user "api:$K" ...` (HTTP basic, user `api`) |
 | Creation | user-only, account API key with the **Support** role, see `../token-creation.md` |
 
-Never echo the key, never put it in a URL, never commit it.
-
 ## Regions and base URLs
 
 NEH shop hosts relay to `[smtp.eu.mailgun.org]:2525`, so shop domains live in the **EU**

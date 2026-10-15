@@ -11,6 +11,14 @@ Durable context for Claude sessions, split by topic. Read only what the task nee
   separate commits.
 - Docs are written in the present tense — how things work now, not what was done.
 
+## Tokens
+
+Every API token lives in its own file under `~/.tokens/` and is loaded by sourcing it (or
+reading it into a shell variable). **Never echo a token, never put it in a URL, never commit
+it**, never paste it into a chat reply or a doc. Minting, rotating and revoking tokens is
+user-only; `token-creation.md` has the page, scopes and file for each. Tokens are read-only
+by scope, so treat every external system as read-only too.
+
 ## troubleshooting/prod-observability.md
 
 **Read this whenever troubleshooting or investigating anything in SWS production or
@@ -69,6 +77,15 @@ the token file, EU vs US region, how postfix picks the Mailgun domain
 for domain state, delivery events and bounce lists, and how to read a `failed` event.
 Strictly read-only: never do write operations against Mailgun.
 
+## troubleshooting/favro-tickets.md
+
+**Read when a task mentions a Favro ID (`THE-24684`), a PR/branch named after one, or asks
+what is on the Day-to-day board.** Favro is our primary ticketing system; Favro IDs are
+carried in GitHub branch and PR names. Covers the token, basic-auth user and
+`organizationId` header, grabbing a card by ID (prefix and case do not matter,
+`unique=true`), listing the Day-to-day board and its columns, paging, and resolving
+user/tag/column IDs. Strictly read-only: the token is read-only, never attempt writes.
+
 ## dev-env/sws-6-local.md
 
 **Read when setting up or repairing the `sws-6` local Docker dev env or running its PHPUnit
@@ -78,5 +95,5 @@ network, `task` install). Not needed for pure code edits in an already-running e
 ## token-creation.md
 
 **Read when a token is missing, expired (`401`), or needs rotating** — Grafana Cloud,
-Sentry, Docker Hub or Mailgun. Covers the generation page, required read scopes, env-file path and var name for
+Sentry, Docker Hub, Mailgun or Favro. Covers the generation page, required read scopes, env-file path and var name for
 each. Minting is **user-only**: never create a token — guide the user through it.
