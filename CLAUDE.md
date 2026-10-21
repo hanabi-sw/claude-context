@@ -70,23 +70,16 @@ Not for SWS (Starweb) production — that is `prod-observability.md` above.
 
 ## neh-php-entrypoints.md
 
-**Read before changing anything PHP-related on an NEH host** — phpMyAdmin, the shop-admin
-WYSIWYG file managers, or any Apache rule meant to block PHP. Covers the mod_php 8.4 wiring
-(there is no php-fpm), the four layers that turn PHP on and off, the full endpoint inventory,
-what only looks like PHP (awstats is Perl CGI, goaccess is static, the storefront has none),
-and the `neh_install_php_enabled` / `neh_install_php_admin_enabled` kill-switch — including
-why the second exists and that the first **does not** disable `/admin/`. Also the traps:
-never `a2dismod php8.4`, and `.phps` needs its own deny.
+**Read before changing anything PHP-related on an NEH host** — where PHP can execute (mod_php
+8.4, no php-fpm), the endpoint inventory, and the `neh_install_php_enabled` kill-switch, which
+deliberately does **not** cover `/admin/`.
 
 ## neh-auth-model.md
 
-**Read when reasoning about who can reach an NEH URL** — adding an access rule, judging
-whether an endpoint is exposed, or tracing why an Apache restriction has no effect. Covers
-the authenticated Locations, why `/admin` fails closed, the unauthenticated-by-design
-surfaces (payment callbacks are query-param dispatched on the shop root, never under
-`/admin`), the multiserver admin-token login and its unimplemented `MS_ADMIN_LOGIN_IP_ALLOW`,
-and the merge-order trap that makes `<Files>` and `<Directory>` rules silently ineffective
-where `<Location>` ones hold.
+**Read when reasoning about who can reach an NEH URL** — the authenticated Locations, the
+unauthenticated-by-design surfaces (payment callbacks, `/TellusPay/`), the multiserver
+admin-token login, and why `<Files>`/`<Directory>` rules are silently ineffective where
+`<Location>` ones hold.
 
 ## troubleshooting/mailgun-shop-mail.md
 
