@@ -1,6 +1,7 @@
 # Prod observability — READ-ONLY
 
-> **Unverified on the NEH workstation; last verified 2026-09-01** (date from the text itself) — see `../HANDOVER-sws.md`. SWS only. Read before querying any SWS production or staging signal source.
+SWS only. Read before querying any SWS production or staging signal source.
+Verified against AWS `546532984119`, Grafana Cloud, Sentry and `reverse-proxy@59a523b` on 2026-10-23.
 
 Everything in this file is read-only access. **Ask before any write**, including touching
 the `prod-admin` / `prod-pulumi` AWS profiles. **Token minting/rotation is user-only —
@@ -14,22 +15,25 @@ never do it yourself; guide the user** (`../tokens.md`).
   separately). Hand read-only queries to the user to run instead; see the ES internals
   section. ES *metrics* via CloudWatch are fine.
 
+`sws-api` (the former Kubernetes service) is discontinued and integrated into the `sws-6` main
+codebase; its errors and access logs are found the same way as any other sws-6 errors and logs below.
+
 ## Where to look
 
 | Signal | Source |
 |---|---|
-| Kubernetes: pods, deployments, workers, nodes | Grafana Cloud |
 | SQS queues | CloudWatch `AWS/SQS` — Grafana's `aws_sqs_*` scrape is **dead since mid-Aug 2026** |
 | Elasticsearch (prod) / OpenSearch (staging) | CloudWatch `AWS/ES` — Grafana has 8 of ~150 metrics, dashboards only |
 | ES cluster internals (shards, thread pools) | ES API — **user-run only**, hand over query batches |
-| Beanstalk web/worker CPU + instance counts | CloudWatch `AWS/EC2` |
+| Beanstalk web/worker CPU + instance counts | CloudWatch `AWS/EC2`; worker/queue/cron diagnosis in `worker-queue-cron.md` |
 | App logs, ES-domain logs, proxy container logs | CloudWatch Logs Insights |
 | Proxy **access** logs (not in CloudWatch at all) | S3 `reverse-proxy-nginx-logs` |
 | App errors / exceptions | Sentry |
+| Kubernetes `k8s-prod` (not SWS), ES/RDS/ECS CloudWatch integrations | Grafana Cloud |
 
 ---
 
-## Grafana Cloud (Prometheus/Mimir) — Kubernetes signals
+## Grafana Cloud (Prometheus/Mimir)
 
 **Access:** `https://prometheus-prod-24-prod-eu-west-2.grafana.net/api/prom`
 (stack `starweb`, `mimir-prod-24`, data in AWS `eu-central-1`).
@@ -38,6 +42,10 @@ never do it yourself; guide the user** (`../tokens.md`).
 On `401`: token expired — minting is **user-only, never do it yourself**: guide the user
 to <https://starweb.grafana.net/a/grafana-auth-app> (read scopes only) and have them
 update the env file (ID stays `1181702`). Details: `../tokens.md`.
+
+Nothing SWS-specific is scraped here: the only cluster is `k8s-prod` and the AWS integration
+jobs (`…-AWS-ES-…`, `…-rds-metrics-…`, `…-ECS-ContainerInsights-…`) carry a thin copy of
+CloudWatch. Use it for cross-service dashboards, not for SWS diagnosis.
 
 **Query:**
 
@@ -51,29 +59,13 @@ curl -s "${AUTH[@]}" --get "$PROM/api/v1/query_range" \
   --data-urlencode 'query=<promql>' \
   --data-urlencode "start=$(( $(date -u +%s) - 21600 ))" \
   --data-urlencode "end=$(date -u +%s)" --data-urlencode 'step=300'
-curl -s "${AUTH[@]}" "$PROM/api/v1/label/__name__/values"   # discovery, ~747 names
+curl -s "${AUTH[@]}" "$PROM/api/v1/label/__name__/values"   # discovery, ~790 names
+curl -s "${AUTH[@]}" --get "$PROM/api/v1/query" --data-urlencode 'query=count by (job) (up)'  # which scrape jobs exist
 ```
 
 **Gotchas:**
-- `up` returns empty — not a health probe.
 - CloudWatch-sourced series lag ~5 min. All timestamps UTC — use `date -u`.
-
-### Key target: the SQS worker
-
-Cluster `sws-api-production2`, ns `sws-api`, deployment `worker` (container `worker`).
-Fixed **1 replica, no HPA** — the `app-hpa` (min 2/max 10) targets the API deployment.
-Requests 0.5 CPU; limits 1 CPU / 1 GiB.
-
-```promql
-kube_deployment_spec_replicas{namespace="sws-api",deployment="worker"}
-kube_deployment_status_replicas_available{namespace="sws-api",deployment="worker"}
-kube_pod_container_status_restarts_total{namespace="sws-api",pod=~"worker-.*"}
-sum by (pod) (rate(container_cpu_usage_seconds_total{namespace="sws-api",container="worker"}[10m]))
-sum by (pod) (container_memory_working_set_bytes{namespace="sws-api",container="worker"}) /1024/1024
-```
-
-- `kube_pod_container_status_ready` returns no data for these pods — use
-  `kube_deployment_status_replicas_available`.
+- `aws_sqs_*` series names still exist (`aws_sqs_info` answers) but carry no data points.
 
 ---
 
@@ -95,6 +87,9 @@ Account `546532984119`, region `eu-central-1`.
   (messages reappear after N s). Bodies are Bernard JSON (`{"args":{"name":"<job>",…}}`);
   body `elasticbeanstalk scheduled job` = worker cron tick — task name is in message
   attribute `beanstalk.sqsd.task_name`.
+- A large DLQ means something failed within the 14-day retention window, not necessarily
+  now — date the messages (`SentTimestamp`, `--attribute-names All`) before linking them to
+  today's symptom.
 
 ---
 
@@ -152,26 +147,21 @@ Discovery: `aws cloudwatch list-metrics --namespace AWS/ES ...` (metric names, d
 | `ThreadpoolSearchQueue` | < 200 | > 700 (queue limit 1000; rejections at the cap) |
 | `ThreadpoolSearchRejected` delta | 0 | any sustained increase = dropped queries |
 | `CPUUtilization` | < 80% | > 90% sustained |
-| `SearchLatency` avg | ~50 ms (post-fix ~26 ms) | > 90 ms |
+| `SearchLatency` avg | ~26–50 ms | > 90 ms |
 | `ThreadpoolWriteQueue` | ~0–1 | growing |
 | write-reject deltas (all four) | 0 | any |
 | `ClusterIndexWritesBlocked` | 0 | 1 = writes rejected outright |
-| `FreeStorageSpace` | well above 20 GB | near low-watermark ⇒ ES blocks writes |
+| `FreeStorageSpace` | well above 20 GB (≈19.8 GB min on 2026-10-23 — at the line) | near low-watermark ⇒ ES blocks writes |
 | `IndexingLatency` | single-digit ms | — |
 
 Also published (and absent from Grafana): `ShardCount`, `Shards.active`, `2xx/4xx/5xx`,
 `JVMGCOldCollectionTime`, `SysMemoryUtilization`, `OpenContexts`, `ThreadpoolSearchThreads`,
 `WriteLatency`, `ReadLatency`, `BurstBalance`, `MasterJVMMemoryPressure`.
 
-**2026-08-31 incident baseline** (search-bound; indexing fine throughout): search queue
-peaked 872/958, `ThreadpoolSearchRejected` +1,170 domain-wide, CPU 90–99%; all write-reject
-counters stayed 0, `FreeStorageSpace` ~19 GB. Node CPU skewed: `-DaP05…` 86–99% vs
-`Q8tgjPC3…` 49–77% (shard-0 hotness, see below).
-
-**Correlation rule:** the `sws-api/worker` queries this domain, so ES search saturation
-shows up as SQS backlog growth while the worker sits near-idle (I/O-blocked). Worker CPU
-≈ 0 + search queue > 700 + rising backlog ⇒ **ES search capacity is the constraint** —
-adding worker replicas won't help and adds load.
+**Correlation rule:** the Beanstalk worker queries this domain, so ES search saturation
+shows up as SQS backlog growth while the worker sits near-idle (I/O-blocked). Worker ASG CPU
+≈ 2 % + search queue > 700 + rising backlog ⇒ **ES search capacity is the constraint** —
+scaling the worker won't help and adds load (`worker-queue-cron.md`).
 
 ---
 
@@ -185,8 +175,9 @@ ES *metrics* are still safe to fetch yourself via CloudWatch `AWS/ES` (section a
 
 Endpoint (for the batches):
 `https://search-sws-production-74-kc4urq6grrqkotg37i5kusqogm.eu-central-1.es.amazonaws.com`
-(ES 7.9.1 OSS). 4 data nodes + 3 dedicated masters. Main index **shops_v11**:
-2 primaries × 1 replica, ~15.1 GB primary / ~30.8 GB total, one shard copy per data node.
+(ES 7.9 OSS). 4 data nodes + 3 dedicated masters. Main index **shops_v11**
+(last seen 2026-08-31; the user confirms the current name): 2 primaries × 1 replica,
+~15 GB primary / ~31 GB total, one shard copy per data node.
 
 **Query** (template for user-run batches):
 
@@ -199,7 +190,8 @@ curl -s "$ES/_stats/search?level=shards&pretty"             # per-shard-copy que
 curl -s "$ES/_cat/thread_pool/search?v&h=node_name,active,queue,rejected"
 ```
 
-Node map (2026-08-31; re-derive with the two `_cat` commands if AWS replaces a node):
+Node map (2026-08-31; the CloudWatch NodeIds are unchanged on 2026-10-23 — re-derive the
+shard column with the two `_cat` commands if AWS replaces a node):
 
 | ES node | CW NodeId | Holds |
 |---|---|---|
@@ -212,22 +204,19 @@ Node map (2026-08-31; re-derive with the two `_cat` commands if AWS replaces a n
 - **Shard 0 serves ~2× shard 1's queries** (per-shop routing; hot shops hash to shard 0) —
   its nodes saturate first. Data-layout issue, not placement.
 - On 4 data nodes rep=1 and rep=3 are even; **rep=2 is never OK** (6 copies / 4 nodes).
-  Primary-count changes need a reindex — plan 4 primaries at shops_v12.
+  Primary-count changes need a reindex — plan 4 primaries at the next index version.
 - Adaptive replica selection avoids cold/young replicas — a copy can look "dead" in the
   counters; diff `_stats/search?level=shards` over minutes before assuming pinning.
 - `search.query_total` values are counters since node/shard start — always diff.
-- Disk: ~27 GB usable/node, ~19.5 GB free (2026-08-31) — at the 20 GB comfort line;
+- Disk: ~27 GB usable/node, `FreeStorageSpace` sits at the 20 GB comfort line;
   reindex-in-place temporarily doubles used space.
-- 2026-08-31 saturation root cause: scraper botnet looping junk `/search` queries; blocked
-  in reverse-proxy (`conf.d/block_junk_search.conf`). Post-block baseline: SearchQueue ~0,
-  SearchLatency avg ~26 ms, node CPU 12–40%.
 
 ---
 
 ## Beanstalk web/worker — CloudWatch `AWS/EC2`
 
-**Access:** envs `sws6-production` (web, behind the reverse proxy) and
-`sws6-production-worker`. CPU/instances via `CPUUtilization` with the
+**Access:** envs `sws6-production` (web, `e-m5mpqmrsgz`, behind the reverse proxy) and
+`sws6-production-worker` (`e-mfsrhccbha`). CPU/instances via `CPUUtilization` with the
 `AutoScalingGroupName` dimension.
 
 **Query:**
@@ -240,9 +229,10 @@ aws cloudwatch list-metrics --namespace AWS/EC2 --metric-name CPUUtilization \
 ```
 
 **Gotchas:**
-- Web ASG as of 2026-08-31: `awseb-e-m5mpqmrsgz-stack-AWSEBAutoScalingGroup-UkGGt5Rvdn6T`.
-  **Immutable deploys/rebuilds rotate the ASG name** (July 2026 was `awseb-e-birfw65gr3-…`) —
-  sweep all awseb ASGs by SampleCount to find who carried traffic in a past window.
+- Web ASG: `awseb-e-m5mpqmrsgz-stack-AWSEBAutoScalingGroup-UkGGt5Rvdn6T` (unchanged since
+  2026-08-31). **Immutable deploys/rebuilds rotate the ASG name** and leave
+  `awseb-e-<envid>-immutable-stack-…` siblings in `list-metrics` for two weeks — sweep all
+  awseb ASGs by SampleCount to find who carried traffic in a past window.
 - **Instance count = CPUUtilization SampleCount / (period/60)** (1-min detailed monitoring
   on). No GroupInServiceInstances — group metrics aren't enabled on awseb ASGs.
 - Scale-in trigger: 35% avg CPU lower bound; equilibrium sits just above it — expected
@@ -254,15 +244,15 @@ aws cloudwatch list-metrics --namespace AWS/EC2 --metric-name CPUUtilization \
 
 ## Logs — CloudWatch Logs Insights
 
-**Access:** `aws logs start-query` / `get-query-results` on the low-priv role
-(verified 2026-09-01).
+**Access:** `aws logs start-query` / `get-query-results` on the low-priv role.
 
 | What | Log group |
 |---|---|
-| SWS prod app logs (live) | `/starweb/sws/starwebserver.se` (+ `/que-messages`, `/shop-api-v2`, …) |
+| SWS prod app logs (live) | `/starweb/sws/starwebserver.se` (streams `app-general.log`, `app-error.log`, `app-api.log`, `app-cron.log`, …) + sub-groups `…/que-messages`, `…/shop-api-v2`, `…/shop-fortnox`, `…/ongoing`, `…/klarna-kco3`, `…/qliro-checkout`, … (`describe-log-groups --log-group-name-prefix /starweb/sws`) |
+| SWS staging | `/starweb/sws/sws-staging.se` + the same sub-groups |
 | ES domain errors/warnings | `/aws/aes/domains/sws-production-74/application-logs` |
-| Reverse proxy container logs — **no access logs** (those are S3-only, see below) | `/ecs/reverse-proxy`, `/ecs/reverse-proxy-https` |
-| `/aws/elasticbeanstalk/sws6-*` | **dead since ~2026-08-19** — don't use |
+| Reverse proxy container logs — **no access logs** (those are S3-only, see below) | `/ecs/reverse-proxy`, `/ecs/reverse-proxy-https`, `…-log-shipper`, `…-crowdsec-appsec` |
+| `/aws/elasticbeanstalk/sws6-*` | deploy-time engine logs only (`eb-engine.log` on each deploy), no app logs — don't use for troubleshooting |
 
 **Gotchas:**
 - App log messages carry **CEST timestamps in-body**; Insights `@timestamp` is UTC.
@@ -275,12 +265,12 @@ aws cloudwatch list-metrics --namespace AWS/EC2 --metric-name CPUUtilization \
 **Access:** bucket `reverse-proxy-nginx-logs` — the only place access logs exist; the
 `/ecs/reverse-proxy*` CloudWatch groups carry container logs, not access logs.
 - Raw per-minute (UTC paths): `nginx-logs/reverse-proxy/YYYY/MM/DD/HH/MM/<task-uuid>/log-shipper/access-object<rand>`
-  (+ small `error-object*` siblings) — ~73 gzip objects/min **without a .gz extension**.
+  (+ small `error-object*` siblings) — ~45–75 gzip objects/min **without a .gz extension**.
 - Daily compacted: `compacted/reverse-proxy/YYYY/MM/DD/access.log.gz` (~1.3 GB/day).
   **The current day is never compacted yet** — use the raw per-minute prefixes for today.
 - `reverse-proxy-athena-results` bucket exists for Athena over these logs.
 
-**Recent window (e.g. last 15 min)** — verified 2026-09-01, ~700 files / ~270k lines, ~15 s
+**Recent window (e.g. last 15 min)** — verified 2026-10-23: ~700 files / ~310k lines, ~30 s
 wall with parallel per-minute `cp` (small enough to run in the foreground):
 
 ```bash
@@ -299,15 +289,17 @@ a single `gzip -dc`; lines are unordered across tasks/minutes — sort on field 
 order matters. A minute prefix spills a few seconds into the next minute.
 
 **Freshness:** the result trails "now" by ~2–3 min — ~1 min log-shipper push lag (hence the
-2 skipped minutes) plus the ~15 s download. Don't read the empty tail as traffic stopping,
+2 skipped minutes) plus the download. Don't read the empty tail as traffic stopping,
 and when correlating with CloudWatch remember its metrics are also ~1 min+ behind (ES/SQS
 integration series in Grafana ~5 min).
 
-### Debugging the search endpoint (commands verified 2026-09-01)
+### Debugging the search endpoint
 
-Block rules: `conf.d/block_junk_search.conf` (patterns) + `conf.d/invalid_reqest_handler`
-(enforcement) in the reverse-proxy repo. Field map for the merged log — split on `"`:
-`$2`=request, `$3`=` status bytes `, `$6`=UA; split on whitespace: `$1`=vhost,
+Block rules live in the reverse-proxy repo: `conf.d/invalid_reqest_handler` (enforcement).
+The junk-search pattern file (`block_junk_search.conf` in the 2026-08-31 incident) is **not**
+in `reverse-proxy@59a523b` `conf.d/` — ask the user where the current patterns live (S3-synced
+vhost config or CrowdSec AppSec) before pointing at a path. Field map for the merged log —
+split on `"`: `$2`=request, `$3`=` status bytes `, `$6`=UA; split on whitespace: `$1`=vhost,
 `$2`=client_ip, `$5`=`[ts`. With `D=~/.cache/proxy-logs/<stamp>-last15`:
 
 ```bash
@@ -347,7 +339,7 @@ Reading the results:
   above (hours, full days), run the `aws s3 cp` to `~/.cache/` as a background task with a
   watcher that fires on completion, and keep troubleshooting other threads in the
   background while it runs; grep the local file once it lands.
-- Line format: `vhost client_ip - - [ts +0000] "METHOD /path" status bytes "referer" "UA" rt=… up_ip=… tls=…`
+- Line format: `vhost client_ip - - [ts +0000] "METHOD /path" status bytes "referer" "UA" rt=… uct=… up_ip=… tls=…`
 - **Timezone: everything here is UTC** — S3 paths and in-line timestamps (`+0000`) alike.
   But SWS app logs are **CEST in-body** (see Logs section): correlating access log ↔ app
   log naively puts events 2 h apart.
@@ -356,7 +348,7 @@ Reading the results:
 
 ## Sentry
 
-**Access:** org `starweb`, project `sws-6`.
+**Access:** org `starweb`, projects `sws-6` (prod PHP), `sws-6-staging`, `sws6-production-js`.
 **Auth:** Bearer `SENTRY_TOKEN` from `~/.tokens/sentry`.
 
 **Query:**
@@ -364,3 +356,14 @@ Reading the results:
 - Latest event (tags incl. `shop` + stacktrace): `…/issues/<id>/events/latest/`
 
 **Gotchas:** API can be slow — always `curl --max-time 30`.
+
+---
+
+## Reference incident — 2026-08-31 (ES search saturation by a scraper botnet)
+
+Search-bound, indexing fine throughout: `ThreadpoolSearchQueue` peaked 872/958,
+`ThreadpoolSearchRejected` +1,170 domain-wide, CPU 90–99 %; all write-reject counters stayed
+0, `FreeStorageSpace` ~19 GB. Node CPU skewed: `-DaP05…` 86–99 % vs `Q8tgjPC3…` 49–77 %
+(shard-0 hotness). Root cause: a distributed scraper looping junk `/search` queries; blocked
+in the reverse proxy with a pattern file (`block_junk_search.conf` at the time). Post-block
+baseline: SearchQueue ~0, SearchLatency avg ~26 ms, node CPU 12–40 %.
