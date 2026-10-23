@@ -13,6 +13,7 @@ CLAUDE.md              always-loaded lookup table (≤ 60 lines)
 README.md              this file
 tokens.md              every token: file, format, auth recipe, scopes, mint page, failure symptoms
 favro.md               Favro tickets and the Day-to-day board (both platforms)
+notion.md              Notion workspace map, read-only lookups, where a new page belongs (SWS machine)
 neh/                   Nordisk eHandel platform (Perl shop framework, GCP hosts, neh* repos)
   php-entrypoints.md   where PHP runs, kill-switch, /admin allowlist, phpMyAdmin
   auth-model.md        who can reach which URL, Apache merge-order traps, token login
