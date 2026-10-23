@@ -1,113 +1,32 @@
-# claude-context — shared Claude knowledge base
+# claude-context — lookup table
 
-Durable context for Claude sessions, split by topic. Read only what the task needs.
+Always loaded (imported by `~/.claude/CLAUDE.md`). Open a doc only when its row matches the task.
 
-## Git conventions
+## Rules that apply everywhere
 
-- Commit only when the user asks; never push without an explicit go-ahead.
-- One-line Conventional Commits (`docs: …`, `fix: …`, `chore: …`), ≤ 72 chars, imperative
-  mood. **No body, no trailers** (no `Co-Authored-By`, no `Generated with`).
-- One logical change per commit: a new guide, an index update and an unrelated path fix are
-  separate commits.
-- Docs are written in the present tense — how things work now, not what was done.
+- Every external system is **read-only** from Claude; anything that writes is handed to the user as a command.
+- Tokens live in `~/.tokens/<service>`, one file each. Never echo one, put it in a URL, a doc or a commit.
+  Minting, rotating or revoking a token is **user-only**; `tokens.md` has the page and scopes per service.
+- Which machine is this? `ls ~/.tokens` (and `aws sts get-caller-identity` if `aws` exists):
+  **NEH workstation** = `favro gh-ro mailgun` only, no AWS, has the `neh*` repos;
+  **SWS machine** = also `grafanacloud sentry dockerhub notion` + the AWS low-priv profile, has `~/code/sws-6`.
+  Do not attempt the other machine's systems; say they are unavailable here.
+- Repo clones here: `/home/user/code/{neh,neh-plugins,neh-infrastructure,neh-monitoring}` — their own `CLAUDE.md`/readme
+  come first for code work. Editing this knowledge base: `README.md`.
 
-## Tokens
+## When the task… → open
 
-Every API token lives in its own file under `~/.tokens/` and is loaded by sourcing it (or
-reading it into a shell variable). **Never echo a token, never put it in a URL, never commit
-it**, never paste it into a chat reply or a doc. Minting, rotating and revoking tokens is
-user-only; `token-creation.md` has the page, scopes and file for each. Tokens are read-only
-by scope, so treat every external system as read-only too.
+| Open | when the task… |
+|---|---|
+| `tokens.md` | needs any API token or credential, gets `401`/`403`, or a token is missing/expired/under-scoped |
+| `favro.md` | mentions `THE-<n>` / a Favro card, a PR or branch named after one, or asks what is in progress / up next on the Day-to-day board |
+| `/home/user/code/neh-monitoring/CLAUDE.md` | investigates an **NEH host or shop**: slow or locked shop, `MysqlDown`/`ApacheNoSlots`, "what ate the box at 03:14", customer sees 429s/bans; needs an access log, atop history, journal or live `ps` (`neh-asset-downloader.sh`, never ssh); adds a silence or queries Prometheus/Grafana |
+| `/home/user/code/neh-infrastructure/CLAUDE.md` | asks what is deployed on an NEH host (`/etc/ansible_runs`), which role/tag does what, or touches Ansible; its `roles/crowdsec/CLAUDE.md` is the rate-limit/ban runbook |
+| `neh/php-entrypoints.md` | changes or reasons about **PHP on an NEH host**: kill-switch, `/admin/` allowlist, phpMyAdmin, ezFilemanager, mod_php packages |
+| `neh/auth-model.md` | asks who can reach an NEH URL: authenticated Locations, unauthenticated callbacks, multiserver token login, why `<Files>`/`<Directory>` rules may not hold on `/admin` |
+| `neh/mailgun.md` | an **NEH shop e-mail did not arrive** and postfix on the host already shows `status=sent` to `smtp.eu.mailgun.org` (SWS does not use Mailgun) |
+| `sws/prod-observability.md` | troubleshoots **SWS production/staging**: Grafana Cloud, CloudWatch metrics/Logs Insights, S3 proxy access logs, Sentry, Elasticsearch health, Beanstalk scaling, bot/scraper traffic (not for NEH, not for pure code work) |
+| `sws/worker-queue-cron.md` | `starwebserver.se/app/status/cron` warns, `sws6-production-worker` is Yellow/Red, the SQS backlog grows, queued jobs (order mails, ES indexing, Fortnox/Hogia/Ongoing, reports) are late, or an Aurora writer is pinned |
+| `sws/local-dev.md` | sets up or repairs the `sws-6` local Docker dev env or runs its PHPUnit suites |
 
-## troubleshooting/prod-observability.md
-
-**Read this whenever troubleshooting or investigating anything in SWS production or
-staging**, specifically before:
-
-- Querying prod metrics or logs from any source — Grafana Cloud, CloudWatch
-  (metrics or Logs Insights), S3 access logs, or Sentry. It holds the endpoints,
-  auth, read-only rules, and per-source query boilerplate.
-- Diagnosing Elasticsearch/OpenSearch health, search saturation, or indexing issues
-  (includes the **no-direct-ES-access rule**: hand query batches to the user).
-- Investigating SQS backlog, DLQ contents, or the `sws-api/worker` consumer.
-- Analyzing reverse-proxy traffic: bot/scraper activity, junk-search blocks,
-  search-endpoint debugging (verified command recipes included).
-- Checking Beanstalk web/worker scaling or instance counts.
-- Correlating any of the above across sources (timezone and metric-lag traps included).
-
-Do **not** load it for pure code work in the SWS/reverse-proxy repos that touches no
-production system.
-
-## troubleshooting/worker-queue-cron.md
-
-**Read this when the Beanstalk worker or its queue misbehaves**, specifically when:
-
-- https://starwebserver.se/app/status/cron warns `Last cron job ran … minutes ago`.
-- `sws6-production-worker` is Yellow/Red, or the `sws6-production` SQS backlog grows.
-- Queued jobs are late: order emails, ES indexing, Fortnox/Hogia/Ongoing syncs, sales reports.
-- One Aurora writer (`sws-6-1`/`sws-6-2`) is pinned and you need Performance Insights to
-  name the job and shop behind it.
-
-It holds the diagnosis order, Logs Insights / PI / SQS / S3 recipes, the command gotchas,
-what not to do, and the 2026-10-07 reference incident. Still read
-`prod-observability.md` first for auth and the read-only rules.
-
-## NEH host troubleshooting → /home/user/code/neh-monitoring/CLAUDE.md
-
-**Read that file whenever investigating an NEH (Nordisk eHandel) host or shop** — a slow or
-locked-up shop, `MysqlDown`/`ApacheNoSlots` alerts, "what ate the box at 03:14", a customer
-reporting 429s or bans. It is the entry point for:
-
-- Prometheus / Grafana / Alertmanager endpoints, access prerequisites and silence recipes.
-- Per-process history without ssh: process-exporter (`namedprocess_namegroup_*`) PromQL recipes,
-  including how to confirm long-running apache2 workers.
-- `neh-asset-downloader.sh`: access logs, atop (per-PID, 14 days), journal and a live `ps`
-  from a host. Claude may run it; Claude never runs ssh/scp/ansible against an NEH host.
-- Sibling `/home/user/code/neh-infrastructure/CLAUDE.md` for what is deployed on a host
-  (`/etc/ansible_runs`) and its `roles/crowdsec/CLAUDE.md` for the rate-limit runbook.
-
-Not for SWS (Starweb) production — that is `prod-observability.md` above.
-
-## neh-php-entrypoints.md
-
-**Read before changing anything PHP-related on an NEH host** — where PHP can execute (mod_php
-8.4, no php-fpm), the endpoint inventory, and the `neh_install_php_enabled` kill-switch, which
-deliberately does **not** cover `/admin/`.
-
-## neh-auth-model.md
-
-**Read when reasoning about who can reach an NEH URL** — the authenticated Locations, the
-unauthenticated-by-design surfaces (payment callbacks, `/TellusPay/`), the multiserver
-admin-token login, and why `<Files>`/`<Directory>` rules are silently ineffective where
-`<Location>` ones hold.
-
-## troubleshooting/mailgun-shop-mail.md
-
-**Read when an NEH shop e-mail did not arrive** and postfix on the shop host already shows
-`status=sent` to `smtp.eu.mailgun.org`. NEH platform only; SWS does not use Mailgun. Covers
-the token file, EU vs US region, how postfix picks the Mailgun domain
-(`sasl_passwd_autogenerated`, keyed on the shop's service e-mail), verified `curl` recipes
-for domain state, delivery events and bounce lists, and how to read a `failed` event.
-Strictly read-only: never do write operations against Mailgun.
-
-## troubleshooting/favro-tickets.md
-
-**Read when a task mentions a Favro ID (`THE-24684`), a PR/branch named after one, or asks
-what is on the Day-to-day board.** Favro is our primary ticketing system; Favro IDs are
-carried in GitHub branch and PR names. Covers the token, basic-auth user and
-`organizationId` header, grabbing a card by ID (prefix and case do not matter,
-`unique=true`), listing the Day-to-day board and its columns, paging, and resolving
-user/tag/column IDs. Strictly read-only: the token is read-only, never attempt writes.
-
-## dev-env/sws-6-local.md
-
-**Read when setting up or repairing the `sws-6` local Docker dev env or running its PHPUnit
-suites** — bring-up commands, test commands, and the gotchas (Docker Hub login, `starweb`
-network, `task` install). Not needed for pure code edits in an already-running env.
-
-## token-creation.md
-
-**Read when a token is missing, expired (`401`), or needs rotating** — Grafana Cloud,
-Sentry, Docker Hub, Mailgun, Favro or Notion. Covers the generation page, required read
-scopes, env-file path and var name for each. Minting is **user-only**: never create a
-token — guide the user through it.
+Not here: shop behaviour, order handling, templates, release process → `neh/readme.md`; per-customer code → `neh-plugins` (check the branch first).
