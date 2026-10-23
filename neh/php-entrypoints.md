@@ -1,125 +1,137 @@
 # NEH PHP entrypoints
 
-Where PHP can execute on an NEH (Nordisk eHandel) host, how it is wired into Apache, and the
-flag that switches it off. NEH platform only — SWS/Starweb is unrelated.
-
-Repos referenced: `neh` (the Perl shopexpo codebase), `ansible` (deploys), `neh-plugins`
-(per-customer plugins, default branch `nordicshops`).
+NEH only. Read before changing anything PHP-related on an NEH host: where PHP can execute, how it
+is wired into Apache, and the flags that switch it off. Describes `neh-infrastructure` **develop**
+(PHP2Shell Part A + Part B); `master` carries only Part A (interpreter patch + kill-switch).
+Verified against `neh@fdf7fa8` (develop) and `neh-infrastructure@3d814a5` (develop) on 2026-10-23.
 
 ## Runtime
 
-**mod_php 8.4, in-process under mpm_prefork. There is no php-fpm, no FastCGI, no separate
-socket to cut.** Packages come from the main APT list in `ansible/roles/neh-install/tasks/main.yml`
-(`libapache2-mod-php8.4`, `php8.4-mysql`), installed **unconditionally on every host**, dev and
-prod. The `phpmyadmin` role adds `php-mbstring`, `php-zip`, `php-gd`, `php-curl`, `php-bz2`.
+**mod_php 8.4, in-process under mpm_prefork. No php-fpm, no FastCGI, no separate socket to cut.**
+`libapache2-mod-php8.4`, `php8.4-mysql` and `php8.4-gd` come from the main APT list in
+`neh-infrastructure/roles/neh-install/tasks/main.yml` (~lines 936-993), installed unconditionally
+on every host, dev and prod. The interpreter is pinned by `neh_install_php_min_version` /
+`neh_install_php_packages` (tag `php-patch`, `defaults/main.yml:92-116`, `tasks/main.yml:454-525`),
+which also restarts Apache when it still maps a replaced `libphp8.4.so` and writes
+`/etc/php/8.4/apache2/conf.d/99-neh-hardening.ini` (`session.upload_progress` and `expose_php` off).
+The `phpmyadmin` role adds `php-{mbstring,zip,curl,bz2}` only when `phpmyadmin_state: present`.
 
 Nothing enables the module from Ansible — Debian's `dpkg` postinst does, via
-`/etc/apache2/mods-enabled/php8.4.{load,conf}`. Debian's shipped `php8.4.conf` carries the
-global `<FilesMatch ".+\.ph(ar|p|tml)$"> SetHandler application/x-httpd-php`.
+`/etc/apache2/mods-enabled/php8.4.{load,conf}`; Debian's `php8.4.conf` carries the global
+`<FilesMatch ".+\.ph(ar|p|tml)$"> SetHandler application/x-httpd-php` (packaging fact, not in a repo).
 
 ## How PHP is turned on and off
 
-Four layers, in the order they take effect:
+Layers in the order they take effect:
 
-1. **Server-level `AddType`** — `neh/apache/shopexpo.conf` has
-   `AddType application/x-httpd-php .php` and `AddType application/x-httpd-php-source .phps`.
-   The second is a **source-disclosure handler**; `php_admin_flag engine off` does not cover it.
+1. **Server-level `AddType`** — `neh/apache/shopexpo.conf:9-10` has
+   `AddType application/x-httpd-php .php` and `… x-httpd-php-source .phps`. The second is a
+   **source-disclosure handler**; `php_admin_flag engine off` does not cover it. Branch
+   `fix/apache-drop-php-addtype` (unmerged) removes both lines.
 2. **Vhost-level off** — `php_admin_flag engine off` on line 3 of both
-   `neh/apache/Includes/SE_shop.inc` (HTTP) and `SE_shop-ssl.inc` (HTTPS). This kills PHP for
-   every shop vhost. `php_admin_*` cannot be overridden from `.htaccess`, which matters because
-   `shopexpo.conf` sets `AllowOverride All` for `/home/www`.
-3. **`<Location /admin>` turns it back on** — `php_admin_flag engine on` inside the admin
-   Location in `SE_shop-ssl.inc`. **This is the only place PHP runs on a shop vhost**, and it is
-   HTTPS-only: the HTTP include has no `/admin` alias and no re-enable.
-4. **Cheap-404 defence in depth** — `neh_install_cheap_404_patterns` in
-   `ansible/roles/neh-install/defaults/main.yml` renders `RedirectMatch 404` plus a scoped
-   `ErrorDocument 404 default` into both includes. The PHP pattern deliberately exempts
-   `/admin/`, and is deliberately limited to `.php` — see the SEO-redirect trap below.
+   `neh/apache/Includes/SE_shop.inc` (HTTP) and `SE_shop-ssl.inc` (HTTPS). `php_admin_*` cannot be
+   overridden from `.htaccess`, which matters because `shopexpo.conf` sets `AllowOverride All` inside
+   `<Directory "/home/www">`.
+3. **`<Location /admin>` turns it back on** — `php_admin_flag engine on` (`SE_shop-ssl.inc:59`,
+   HTTPS only; the HTTP include has no `/admin` alias). Ansible flips it to `off` when
+   `neh_install_php_admin_enabled: false` (`tasks/main.yml:1824-1833`).
+4. **Kill-switch (outside `/admin/`)** — `conf-available/neh-php-killswitch.conf`: an access-phase
+   `<LocationMatch "^(?!/admin/).*\.ph(p[0-9]?|tml|ar|ps)($|/)"> Require all denied` on every vhost
+   (`tasks/main.yml:389-417`, template `neh-php-killswitch.conf.j2`).
+5. **`/admin/` allowlist** — `conf-available/neh-php-admin-allowlist.conf`
+   (`neh_install_php_admin_allowlist_enabled: true`, `tasks/main.yml:419-451`): denies every PHP
+   file under `/admin/` **except** `/admin/tinymce/tinymce/jscripts/tiny_mce/plugins/ezfilemanager/index.php`,
+   the one live PHP entry point. Deployed on every host regardless of the kill-switch flag.
+6. **Cheap-404 defence in depth** — `neh_install_cheap_404_patterns` (`defaults/main.yml:132-138`,
+   pattern `^/(?!admin/).*\.php(/|$)`) renders `RedirectMatch 404` plus a scoped
+   `ErrorDocument 404 default` into both includes (`tasks/main.yml:1800-1815`). Deliberately
+   `.php`-only — see the SEO-redirect trap below.
 
-Per-shop vhosts are generated by `neh/SE_sys/install/SE-vhost.pl` and every one of them
-`Include`s `SE_shop.inc` / `SE_shop-ssl.inc`, so all of the above reaches every shop. (That
-generator also interpolates a per-shop `$extra` from an `extra_config` column — that column does
-not exist in the `SSLCertificate` schema, so it always renders empty.)
+Per-shop vhosts are generated by `neh/SE_sys/install/SE-vhost.pl` and every one `Include`s
+`SE_shop.inc` / `SE_shop-ssl.inc`, so all of the above reaches every shop. (The generator also
+interpolates a per-shop `$extra` from an `extra_config` column that does not exist in the
+`SSLCertificate` schema, so it always renders empty.)
+
+## The flags
+
+Fleet defaults in `neh-infrastructure/inventory-nehcloud/group_vars/neh/vars.yml`:
+
+| Flag | Default | Effect |
+|---|---|---|
+| `neh_install_php_enabled` | `false` fleet-wide; **`true` in `nehdev_dedicated` and `nehdev_shared`** | `false` writes the kill-switch conf (layer 4). Dev hosts therefore run **without** the kill-switch. |
+| `neh_install_php_admin_enabled` | `true` | `false` flips `engine on` → `off` inside `<Location /admin>`; stops the editor's file-browser button fleet-wide. Nothing customer-facing breaks. |
+| `neh_install_php_admin_allowlist_enabled` | `true` | the `/admin/` allowlist (layer 5); independent of the two flags above. |
+| `phpmyadmin_state` (role `phpmyadmin`) | **`absent`**; `present` in the dev groups | `absent` purges `/usr/share/phpmyadmin`, the extension packages, the `phpmyadmin` DB, the `pma` user and the certbot lineage (guarded: refuses if Apache still references the tree). `present` installs 5.2.3 with an in-place upgrade that keeps `config.inc.php`. |
+
+Roll out with `NEH_DEPLOY.sh <host> --tags env,php-killswitch,php-admin-allowlist,phpmyadmin`
+(add `php-patch` for the interpreter upgrade). One-off kill-switch revert on a host:
+`-e "neh_install_php_enabled=true"`. Flipping `phpmyadmin_state` back to `present` reinstalls from
+scratch on prod — the purge is real.
 
 ## Endpoint inventory
 
 | Endpoint | Served by | Gating |
 |---|---|---|
-| `/admin/**/*.php` on every shop HTTPS vhost | `alias /admin /home/www/SE_sys/admin` + `engine on` | shop-admin auth (`AuthType SE::ShopCenter`, `require admin`) |
-| ↳ TinyMCE `ezfilemanager/index.php` | wired in at `neh/SE_sys/admin/INC/tinymce.htm` (plugin list, toolbar button, `file_browser_callback`) | inherits `/admin` |
-| ↳ Xinha `ImageManager/backend.php`, `ExtendedFileManager/backend.php` | loaded from `neh/SE_sys/admin/INC/xinha.htm` | inherits `/admin` |
-| ↳ `neh-plugins` `nordicshops` branch | 21 `.php` files under `admin/kerstinflorian/tinymce/.../ezfilemanager/` — the default branch, so all customers | inherits `/admin` |
-| `https://phpmyadmin.<fqdn>/` | own vhost, `DocumentRoot /usr/share/phpmyadmin` | **dev-only** vhost; `Deny from all` + `Allow from 3.78.156.12` |
-| phpMyAdmin **files + DB on every host** | the `phpmyadmin` role | was listed bare in `playbooks/neh_deploy.yml`, so it ran on prod too — files on disk, no vhost |
-| `/*.php` outside `/admin/` | — | already dead: `engine off` + cheap-404 |
+| `/admin/tinymce/tinymce/jscripts/tiny_mce/plugins/ezfilemanager/index.php` | `alias /admin /home/www/SE_sys/admin` + `engine on`; wired in `neh/SE_sys/admin/INC/tinymce.htm` (plugin list, toolbar button, `file_browser_callback`) | shop-admin auth (`AuthType SE::ShopCenter`, `require admin`) — **the only PHP that runs** |
+| every other `/admin/**/*.php` (Xinha `ExtendedFileManager/backend.php`, the `nordicshops` plugin copies under `admin/kerstinflorian/tinymce/…/ezfilemanager/`, 21 files) | same alias | **403** from the allowlist (layer 5) |
+| `https://phpmyadmin.<fqdn>/` | own vhost, `DocumentRoot /usr/share/phpmyadmin`, dev-only (`neh_vars_environment == "dev"`), `Allow from 3.78.156.12`, full-chain LE cert | exists only where `phpmyadmin_state: present` |
+| `/*.php` outside `/admin/` | — | dead: `engine off` + kill-switch + cheap-404 |
+
+Plugins come from `neh_plugin_branch` = `nordicshops` on every host except seadmin (`se-admin`).
 
 ## Not PHP (common misreads)
 
-- **awstats** — Perl CGI via `ScriptAlias /admin/awstats/ "/usr/lib/cgi-bin/"`. Customer-facing:
-  the shop admin's "Webbstatistik" menu item embeds it in an iframe.
-- **goaccess** — static HTML generated by a C binary on `127.0.0.1:7890`.
-- **The storefront** — zero PHP. No `.php` in `SE_sys/code`, `SE_sys/templates`, or any of the
-  7 theme tarballs. Payment and webhook callbacks are Perl, dispatched by **query parameter**
-  (`?JSON=`, `?SCO_PUSH=`, `?PAYMENT_CALLBACK=`) or the one path-based case `/TellusPay/`.
+- **awstats** — Perl CGI via `ScriptAlias /admin/awstats/ "/usr/lib/cgi-bin/"` (`SE_shop-ssl.inc:19`).
+  Customer-facing: the admin "Webbstatistik" menu item embeds it in an iframe (`stats-frame.html`).
+- **goaccess** — static HTML (`/home/www/SE/www/goaccess.html`) from a C binary; `127.0.0.1:7890`
+  is its real-time WebSocket.
+- **The storefront** — zero PHP in `SE_sys/code`, `SE_sys/templates` or the 7 theme tarballs.
+  Payment and webhook callbacks are Perl, dispatched by query parameter (`?SCO_PUSH=`,
+  `?PAYMENT_CALLBACK=`, `?JSON=`) or the one path-based case `/TellusPay/` — see `auth-model.md`.
+- **Xinha** — `INC/xinha.htm` loads only `ExtendedFileManager` (which `require`s `ImageManager`
+  classes), and only for shops with `cnf_htmleditor='xinha'`. Fatal on PHP 7/8 anyway; dead code
+  that still ships, now 403.
 - **`/DAV`, `/SOAP`, `/__API__/`, `/server-status`** — Perl or Apache modules.
-
-## The kill-switch
-
-Two flags, fleet defaults in `ansible/inventory-nehcloud/group_vars/neh/vars.yml`:
-
-- **`neh_install_php_enabled`** (default `false`) — disables every PHP endpoint **outside
-  `/admin/`**. Removes the phpMyAdmin vhosts, stops the `phpmyadmin` role re-installing, and
-  writes `conf-available/neh-php-killswitch.conf` (+ `a2enconf`) containing an access-phase
-  `Require all denied` for `.php/.php[0-9]/.phtml/.phar/.phps` on every vhost.
-- **`neh_install_php_admin_enabled`** (default `true`) — the `/admin/` carve-out. **The flag
-  above does not disable `/admin/`.** Setting this `false` flips `php_admin_flag engine on` to
-  `off` inside `<Location /admin>`, which stops the editor's image/file-browser button
-  fleet-wide. Nothing customer-facing breaks.
-
-Roll out with `NEH_DEPLOY.sh <host> --tags env,php-killswitch,phpmyadmin`; one-off revert with
-`-e "neh_install_php_enabled=true"`. Nothing is uninstalled — packages, `/usr/share/phpmyadmin`,
-`config.inc.php` (written `force: false`) and the `phpmyadmin` DB all stay, so flipping back
-restores the lot.
 
 ## Gotchas
 
 - **Never `a2dismod php8.4` or purge `libapache2-mod-php8.4`.** `php_admin_flag` is a mod_php
-  directive and is unguarded (no `<IfModule>`) in `SE_shop.inc` and `SE_shop-ssl.inc`. Unloading
-  the module makes those unknown directives, `apache2ctl configtest` fails, and because every
-  Apache handler in the ansible repo is `configtest && reload`, the reload is **refused and the
-  change silently does not apply** while the run reports success.
+  directive and is unguarded (no `<IfModule>`) in both includes. Without the module
+  `apache2ctl configtest` fails, and every Apache handler in `neh-infrastructure` is
+  `configtest && reload` (or `restart`), so the reload/restart is **refused and the change
+  silently does not apply** while the run reports success.
 - **Use `<LocationMatch>`, not `<Files>`/`<FilesMatch>`/`<Directory>`**, for anything that must
-  hold on `/admin`. `SE::ShopCenter::handler` is a `PerlMapToStorageHandler` that returns `OK` on
-  several branches, which makes httpd skip `ap_directory_walk` and `ap_file_walk`. See
-  `neh-auth-model.md`.
+  hold on `/admin`: `<Files>` merges before `<Location>` and `AuthMerging Off` lets
+  `<Location /admin>`'s `require admin` replace it; and `SE::ShopCenter::handler`
+  (`PerlMapToStorageHandler`) returns `OK` on several branches, which skips the directory/file
+  walk entirely. See `auth-model.md`.
 - **Access phase, not translate phase**, for anything that must hold internally. `RedirectMatch`
-  and `RewriteRule` are external-facing only in practice; a `Require` runs in the access phase
-  and so also covers `127.0.0.1`, VPC callers and `ssh -L` tunnels. GCP firewall tags and nginx
-  cannot do this, and CrowdSec decides per source IP, never per path.
+  and `RewriteRule` are external-facing only in practice; a `Require` runs in the access phase and
+  so also covers `127.0.0.1`, VPC callers and `ssh -L` tunnels. GCP firewall tags and nginx cannot
+  do this, and CrowdSec decides per source IP, never per path.
 - **Do not broaden `neh_install_cheap_404_patterns` to more PHP extensions.** `RedirectMatch` is
-  mod_alias at `translate_name`, which runs *before* `SE::ShopCenter::handler` (map-to-storage)
-  performs the per-shop `SE_<shop>.SEORedirect` lookup. Anything the pattern matches can
-  therefore never reach its 301. `.php3`, `.php4`, `.php5` and `.phtml` are the extensions a
-  shop migrated off an old PHP platform is most likely to hold redirects for
-  (`SE_sys/apps/extractredirs.pl` populates that table), and the failure is silent — such a URL
-  would 404 instead of redirecting, with nothing logged. Whether any shop currently has such
-  rows is a DB question, not a code one. The kill-switch covers those extensions at the access
-  phase instead, which runs after map-to-storage, so SEO redirects resolve and short-circuit
-  first.
-- **`.phps`** is a separate extension with its own source-disclosure handler — include it in any
-  deny rule.
-- Two shipped `.htaccess` files, in the Xinha `ImageManager/demo_images/` and
-  `ExtendedFileManager/demo_images/` directories, set `php_flag engine off`. They harden, and
-  they cannot weaken anything, because the parent `php_admin_flag` wins.
-- The phpMyAdmin apache snippet guards `open_basedir` with `<IfModule mod_php7.c>`, which never
-  matches on PHP 8.4 — phpMyAdmin runs with no `open_basedir`.
+  mod_alias at `translate_name`, which runs *before* `SE::ShopCenter::handler` performs the
+  per-shop `SE_<shop>.SEORedirect` lookup (table written by `SE_sys/code/Misc/SEO.pm`), so a
+  matched URL can never reach its 301. `.php3/.php4/.php5/.phtml` are exactly what a shop migrated
+  off an old PHP platform holds redirects for, and the failure is silent (404, nothing logged).
+  Whether any shop has such rows is a DB question. The kill-switch covers those extensions at the
+  access phase instead, after map-to-storage, so SEO redirects resolve first.
+  (`SE_sys/apps/extractredirs.pl` exports `HTTPRedirect`, a different table — not relevant here.)
+- **`.phps`** has its own source-disclosure handler — include it in any deny rule.
+- Two shipped `.htaccess` files (Xinha `ImageManager/demo_images/`, `ExtendedFileManager/demo_images/`)
+  set `php_flag engine off` inside `<IfModule mod_php.c>`. They harden and cannot weaken anything,
+  because the parent `php_admin_flag` wins.
+- The phpMyAdmin apache snippet guards `open_basedir` with `<IfModule mod_php.c>` (fixed from
+  `mod_php7.c` on 2026-10-22), so `open_basedir` applies where phpMyAdmin is present.
 
 ## Known-weak PHP worth remembering
 
-`ezFilemanager v2.1.1c (2010)`, shipped in the admin and in the `nordicshops` plugin branch, is
-configured with `LOGIN_FORM=false`, `ENABLE_FORM_TOKEN=0`, delete/rename/copy enabled, and builds
-its base path by concatenating the client-supplied `$_COOKIE['ezFilemanager_folder']`. It is
-reachable by any authenticated shop admin. CrowdSec is switched **off** on `(^|/)admin(/|$)`, and
-`www-data` holds NOPASSWD sudo over `newshop` / `SE-vhost.pl` / `shopperms.sh`, so PHP execution
-under `/admin/` is a path to root. Uploads landing in a shop docroot cannot execute
-(`engine off` + cheap-404); only a write **under `/admin/`** would.
+`ezFilemanager v2.5 (2011)`, the one allowed entry point, is configured with `LOGIN_FORM=false`,
+`ENABLE_FORM_TOKEN=0`, delete/rename/copy enabled, uploads via `copy()`, and (the `neh` copy)
+builds its base path from the client-supplied `$_COOKIE['ezFilemanager_folder']`
+(`…/ezfilemanager/includes/config.inc.php:33-60`; the `nordicshops` plugin copy uses
+`DOCUMENT_ROOT` instead). Reachable by any authenticated shop admin. CrowdSec is switched **off** on
+`(^|/)admin(/|$)`, and `www-data` holds NOPASSWD sudo over `newshop` / `SE-vhost.pl` /
+`shopperms.sh` (`tasks/main.yml:1318,1327`), so PHP execution under `/admin/` is a path to root.
+Uploads landing in a shop docroot cannot execute (`engine off` + kill-switch + cheap-404); only a
+write **under `/admin/`** would.
