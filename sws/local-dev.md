@@ -1,6 +1,7 @@
 # sws-6 — local Docker dev env & tests
 
-> **Unverified on the NEH workstation; last verified unknown** (date from the text itself) — see `../HANDOVER-sws.md`. SWS only. Read when setting up or repairing the sws-6 local Docker dev env or running its PHPUnit suites.
+SWS only. Read when setting up or repairing the sws-6 local Docker dev env or running its PHPUnit suites.
+Verified against `sws-6@e248839efd` (Taskfile, docker-compose.yml, docs/DOCKER.md) on 2026-10-23.
 
 Checkout: `~/code/sws-6`. Full detail in its `CLAUDE.md`, `docs/DOCKER.md`, `docs/WORKTREES.md`.
 Every `task`/`docker` call needs `dangerouslyDisableSandbox: true` (Docker socket).
@@ -8,7 +9,7 @@ Every `task`/`docker` call needs `dangerouslyDisableSandbox: true` (Docker socke
 ## Bring-up (main checkout, once)
 
 ```bash
-# 1. Docker Hub login — sws6-app-dev, sws6-app-base and oauth-server are private (see ../tokens.md)
+# 1. Docker Hub login — the starweb/* images (sws6-app-dev, sws-mysql, sws-elasticmq, oauth-server) need it (see ../tokens.md)
 set -a; . ~/.tokens/dockerhub; set +a; echo "$TOKEN" | docker login --username "$USERNAME" --password-stdin
 # 2. go-task — not a system package here; installed via mise, symlinked onto PATH
 mise use -g task@latest && ln -sfn "$(mise which task)" ~/.local/bin/task
@@ -16,7 +17,7 @@ mise use -g task@latest && ln -sfn "$(mise which task)" ~/.local/bin/task
 docker network create starweb 2>/dev/null || true
 # 4. provision: pulls images, composer/npm install, frontend compile, app DB + devShop seed, ES index (~10–20 min cold)
 cd ~/code/sws-6 && task dev:provision          # .env is copied from .env.example if missing
-task dev:status                                # expect 8/8 running, 4 ✓
+task dev:status                                # expect 9/9 running, 4 ✓ (sws-app, mysql, redis, elasticsearch)
 ```
 
 Hosts file (browser access only, not needed for tests):
@@ -58,7 +59,8 @@ Snapshot log: `data/test-reports/snapshot-<worker>.log`.
   then `task dev:provision` again. The setting lives in the container and is lost on `--force-recreate`.
 - `npm ERR! code ENOTEMPTY … rename node_modules/<pkg> -> node_modules/.<pkg>-xxxx` after an aborted
   `npm ci`: the tree is half-written, `npm install` cannot reconcile it. Run `task dev:provision -- --clean-npm`.
-- Ports 80, 3306, 6379, 9200, 9324, 1080, 1025, 5601 must be free on the host.
+- Ports 80 (bound to 127.0.0.1 only), 3306, 6379, 9200, 9324, 1080, 1025, 5601 must be free on the host.
+- `sws-valkey-tls` (Valkey 9.1.0) is the ninth container; it backs only `ConnectionFactoryTlsTest`.
 - Provision runs as root in the container; it ends with `chown -R www-data data public/shops`.
   If Apache 500s on a template render later, rerun that chown via `task dev:shell`.
 - `bin/console` does not propagate exit codes — the provision script verifies steps against the DB instead.
