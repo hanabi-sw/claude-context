@@ -1,6 +1,7 @@
 # claude-context — lookup table
 
 Always loaded (imported by `~/.claude/CLAUDE.md`). Open a doc only when its row matches the task.
+**Editing this file: add a row, never a paragraph. Hard cap 60 lines; details go in the linked doc (`README.md`).**
 
 ## Rules that apply everywhere
 

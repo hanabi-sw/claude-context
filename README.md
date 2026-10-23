@@ -27,6 +27,22 @@ HANDOVER-*.md          temporary: work handed to the agent on the other machine;
 Group by platform: the first question every doc used to answer in its preamble was "NEH or SWS?".
 The directory answers it, so a doc's scope line is one sentence.
 
+## Adding to the index (`CLAUDE.md`) — keep it a lookup table
+
+`CLAUDE.md` is loaded into every session on every machine, so each line costs context everywhere,
+forever. Rules, enforced on every edit:
+
+- **Hard cap 60 lines.** If a new row does not fit, merge or shorten rows; never exceed it.
+- **One row per doc, in the table.** A row is `| <path> | when the task… |` with trigger phrases a
+  reader can match against their task. No prose sections, no recipes, no history, no "why".
+- **Explanations go in the doc, not the index.** If a fact needs more than the trigger phrase, it
+  belongs behind the link.
+- **The rules block stays ≤ 10 lines** and only holds rules that apply to *every* session (token
+  handling, read-only, machine detection). Anything platform- or task-specific is a row.
+- **No duplication of sibling files.** `neh-monitoring/CLAUDE.md`, `neh-infrastructure/CLAUDE.md`
+  and the repos' readmes are pointed at, never summarised.
+- Check with `wc -l CLAUDE.md` before committing an index change.
+
 ## Writing a doc
 
 - Start with the title, a one-sentence scope ("NEH only. Read when …"), and a line
