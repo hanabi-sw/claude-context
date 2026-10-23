@@ -1,12 +1,14 @@
 # sws-6 — local Docker dev env & tests
 
+> **Unverified on the NEH workstation; last verified unknown** (date from the text itself) — see `../HANDOVER-sws.md`. SWS only. Read when setting up or repairing the sws-6 local Docker dev env or running its PHPUnit suites.
+
 Checkout: `~/code/sws-6`. Full detail in its `CLAUDE.md`, `docs/DOCKER.md`, `docs/WORKTREES.md`.
 Every `task`/`docker` call needs `dangerouslyDisableSandbox: true` (Docker socket).
 
 ## Bring-up (main checkout, once)
 
 ```bash
-# 1. Docker Hub login — sws6-app-dev, sws6-app-base and oauth-server are private (see ../token-creation.md)
+# 1. Docker Hub login — sws6-app-dev, sws6-app-base and oauth-server are private (see ../tokens.md)
 set -a; . ~/.tokens/dockerhub; set +a; echo "$TOKEN" | docker login --username "$USERNAME" --password-stdin
 # 2. go-task — not a system package here; installed via mise, symlinked onto PATH
 mise use -g task@latest && ln -sfn "$(mise which task)" ~/.local/bin/task

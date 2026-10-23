@@ -1,8 +1,10 @@
 # Prod observability — READ-ONLY
 
+> **Unverified on the NEH workstation; last verified 2026-09-01** (date from the text itself) — see `../HANDOVER-sws.md`. SWS only. Read before querying any SWS production or staging signal source.
+
 Everything in this file is read-only access. **Ask before any write**, including touching
 the `prod-admin` / `prod-pulumi` AWS profiles. **Token minting/rotation is user-only —
-never do it yourself; guide the user** (`../token-creation.md`).
+never do it yourself; guide the user** (`../tokens.md`).
 
 - Grafana: `/api/v1/query`, `/api/v1/query_range`, `/api/v1/label/...`, `/api/v1/series`
   only. Never remote-write (`/api/prom/push`), never delete series.
@@ -35,7 +37,7 @@ never do it yourself; guide the user** (`../token-creation.md`).
 `~/.tokens/grafanacloud`. Never echo the token or put it in a file/URL/commit.
 On `401`: token expired — minting is **user-only, never do it yourself**: guide the user
 to <https://starweb.grafana.net/a/grafana-auth-app> (read scopes only) and have them
-update the env file (ID stays `1181702`). Details: `../token-creation.md`.
+update the env file (ID stays `1181702`). Details: `../tokens.md`.
 
 **Query:**
 

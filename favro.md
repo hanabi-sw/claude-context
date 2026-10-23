@@ -15,7 +15,7 @@ link and let them do it in the UI.
 
 | | |
 |---|---|
-| Token | `~/.tokens/favro`, env format `FAVRO_TOKEN=<token>`; creation in `../token-creation.md` |
+| Token | `~/.tokens/favro`, env format `FAVRO_TOKEN=<token>`; creation in `tokens.md` |
 | Basic-auth user | the token owner's **Favro login e-mail** `sebastian.lockwood@starweb.se` (`sl@starweb.se` gives `401`) |
 | Header | `organizationId: d98323ed4cfac48a92f11bf7` on every call except `/organizations` |
 

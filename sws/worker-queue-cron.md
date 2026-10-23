@@ -1,5 +1,7 @@
 # Beanstalk worker, SQS queue and cron — READ-ONLY
 
+> **Unverified on the NEH workstation; last verified 2026-10-07** (date from the text itself) — see `../HANDOVER-sws.md`. SWS only. Read when the Beanstalk worker, its SQS queue or cron misbehaves.
+
 Read this when https://starwebserver.se/app/status/cron warns (`Last cron job ran … minutes
 ago`), when `sws6-production-worker` goes Yellow/Red, when the `sws6-production` SQS backlog
 grows, or when queued jobs (order emails, ES indexing, Fortnox/Hogia/Ongoing syncs, reports)
@@ -140,7 +142,7 @@ aws pi get-dimension-key-details --service-type RDS --identifier "$RID" --group 
 - The sws-6 repo lives in `~/code/sws-6`; shell cwd resets between calls, so use absolute
   paths (`cd /home/user/code/sws-6 && …`).
 - Sentry needs a valid token in `~/.tokens/sentry` (`{"detail":"Invalid token"}` = expired;
-  rotation is user-only, see `../token-creation.md`). Grafana is not needed for this path —
+  rotation is user-only, see `../tokens.md`). Grafana is not needed for this path —
   the Beanstalk worker is not in Kubernetes.
 
 ## Reference incident — 2026-10-07 (starved)
