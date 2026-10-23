@@ -10,7 +10,7 @@ Always loaded (imported by `~/.claude/CLAUDE.md`). Open a doc only when its row 
   Minting, rotating or revoking a token is **user-only**; `tokens.md` has the page and scopes per service.
 - Which machine is this? `ls ~/.tokens` (and `aws sts get-caller-identity` if `aws` exists):
   **NEH workstation** = `favro gh-ro mailgun` only, no AWS, has the `neh*` repos;
-  **SWS machine** = also `grafanacloud sentry dockerhub notion` + the AWS low-priv profile, has `~/code/sws-6`.
+  **SWS machine** = `favro gh-ro grafanacloud sentry dockerhub notion` (no `mailgun`) + the AWS low-priv profile, has `~/code/sws-6`.
   Do not attempt the other machine's systems; say they are unavailable here.
 - Repo clones here: `/home/user/code/{neh,neh-plugins,neh-infrastructure,neh-monitoring}` — their own `CLAUDE.md`/readme
   come first for code work. Editing this knowledge base: `README.md`.
@@ -26,8 +26,8 @@ Always loaded (imported by `~/.claude/CLAUDE.md`). Open a doc only when its row 
 | `neh/php-entrypoints.md` | changes or reasons about **PHP on an NEH host**: kill-switch, `/admin/` allowlist, phpMyAdmin, ezFilemanager, mod_php packages |
 | `neh/auth-model.md` | asks who can reach an NEH URL: authenticated Locations, unauthenticated callbacks, multiserver token login, why `<Files>`/`<Directory>` rules may not hold on `/admin` |
 | `neh/mailgun.md` | an **NEH shop e-mail did not arrive** and postfix on the host already shows `status=sent` to `smtp.eu.mailgun.org` (SWS does not use Mailgun) |
-| `sws/prod-observability.md` | troubleshoots **SWS production/staging**: Grafana Cloud, CloudWatch metrics/Logs Insights, S3 proxy access logs, Sentry, Elasticsearch health, Beanstalk scaling, bot/scraper traffic (not for NEH, not for pure code work) |
-| `sws/worker-queue-cron.md` | `starwebserver.se/app/status/cron` warns, `sws6-production-worker` is Yellow/Red, the SQS backlog grows, queued jobs (order mails, ES indexing, Fortnox/Hogia/Ongoing, reports) are late, or an Aurora writer is pinned |
+| `sws/prod-observability.md` | troubleshoots **SWS production/staging**: CloudWatch metrics/Logs Insights, proxy access logs in S3, Sentry, Elasticsearch health/`/search` slowness, Beanstalk web scaling, bot/scraper traffic, "who is hammering shop X", Grafana Cloud (not for NEH, not for pure code work) |
+| `sws/worker-queue-cron.md` | `starwebserver.se/app/status/cron` warns, `sws6-production-worker` is Yellow/Red, the SQS backlog or DLQ grows, queued jobs (order mails, ES indexing, Fortnox/Hogia/Ongoing, sales reports / `generateReport`) are late or slow, or an Aurora writer is pinned |
 | `sws/local-dev.md` | sets up or repairs the `sws-6` local Docker dev env or runs its PHPUnit suites |
 
 Not here: shop behaviour, order handling, templates, release process → `/home/user/code/neh/readme.md`; per-customer code → `neh-plugins` (check the branch first).
