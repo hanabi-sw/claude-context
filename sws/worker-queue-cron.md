@@ -1,6 +1,7 @@
 # Beanstalk worker, SQS queue and cron — READ-ONLY
 
-> **Unverified on the NEH workstation; last verified 2026-10-07** (date from the text itself) — see `../HANDOVER-sws.md`. SWS only. Read when the Beanstalk worker, its SQS queue or cron misbehaves.
+SWS only. Read when the Beanstalk worker, its SQS queue or cron misbehaves.
+Verified against `sws-6@0719a1faa0` (origin/master) and AWS `546532984119` on 2026-10-23.
 
 Read this when https://starwebserver.se/app/status/cron warns (`Last cron job ran … minutes
 ago`), when `sws6-production-worker` goes Yellow/Red, when the `sws6-production` SQS backlog
@@ -22,10 +23,13 @@ auth and the ES/Grafana/proxy recipes are in `prod-observability.md`.
   reads the newest line of the `app-cron.log` stream in `/starweb/sws/starwebserver.se` and
   warns when it is older than 20 min. It says nothing about why.
 - **Worker vs web in CloudWatch.** The main group's streams (`app-cron.log`,
-  `app-general.log`, `app-error.log`, `app-api.log`, `shop-hogia-retail`) are shared by all
-  instances; only `app-cron.log` is worker-only. Per-instance (`i-…`) streams exist only in
-  the sub-groups (`…/shop-fortnox`, `…/ongoing`). `…/que-messages` and every
-  `/aws/elasticbeanstalk/sws6-*` group are dead — don't query them.
+  `app-general.log`, `app-error.log`, `app-api.log`, `db-migrations`, `klarna-kco*.log`,
+  `svea-sco.log`, `shop-hogia-retail`) are shared by all instances; only `app-cron.log` is
+  worker-only. Per-instance (`i-…`) streams exist only in the sub-groups
+  (`…/que-messages`, `…/shop-fortnox`, `…/ongoing`, `…/shop-api-v2`, `…/klarna-kco3`,
+  `…/qliro-checkout`, `…/nets`, `…/postnord`, `…/svea-sco`, `…/wasa-checkout`,
+  `…/rule-marketing`, `…/session_errors`, `…/shop-csp-violation`, `…/oauth-server`).
+  `/aws/elasticbeanstalk/sws6-*` groups hold deploy-time engine logs only — don't query them.
 - **Two Aurora clusters.** Shops are spread over `sws-6-1-aurora-instance-4` and
   `sws-6-2-aurora-instance-4` (both db.r6g.2xlarge, writer-only, Performance Insights on).
   One shop's heavy job pins only its cluster; the other stays normal. Each shop has its own
@@ -142,8 +146,10 @@ aws pi get-dimension-key-details --service-type RDS --identifier "$RID" --group 
 - The sws-6 repo lives in `~/code/sws-6`; shell cwd resets between calls, so use absolute
   paths (`cd /home/user/code/sws-6 && …`).
 - Sentry needs a valid token in `~/.tokens/sentry` (`{"detail":"Invalid token"}` = expired;
-  rotation is user-only, see `../tokens.md`). Grafana is not needed for this path —
-  the Beanstalk worker is not in Kubernetes.
+  rotation is user-only, see `../tokens.md`). Grafana is not needed for this path.
+- A large DLQ means something failed within its 14-day retention, not necessarily now —
+  date the messages (`SentTimestamp` from `--attribute-names All`) before linking them to
+  today's symptom.
 
 ## Reference incident — 2026-10-07 (starved)
 
@@ -160,7 +166,9 @@ PI `db.user` = one shop user (8.9 of 9 AAS), `db.host` = the two worker IPs, wai
 other jobs ran 45–60 min late. The `OrderItemsDiscountMerger` `RuntimeException … cannot be
 merged` errors that appear alongside are per-order validation in
 `AbstractReportGenerator::isOrderValid` (caught, logged, order skipped) — noise, not a
-failure. Code fixes to propose when it recurs: pass the order count in the message instead
-of counting per page, cap report-page concurrency (separate queue or per-shop lock), and
-alarm on SQS `ApproximateAgeOfOldestMessage` with visible > 0 rather than on cron freshness.
-Pre-existing and unrelated: the DLQ holds ~23k messages aging out at the 14-day retention.
+failure. Follow-up: THE-24659 fetches report pages by id instead of re-counting per page
+(`12abfc217b` behind a flag, flag removal `d67f2463b8` on
+`chore/THE-24659-remove-sales-report-pages-by-ids-flag`; not on `origin/master` as of
+2026-10-23 — check `git branch -r --contains 12abfc217b`). Still open: cap report-page
+concurrency (separate queue or per-shop lock) and alarm on SQS
+`ApproximateAgeOfOldestMessage` with visible > 0 rather than on cron freshness.
