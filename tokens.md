@@ -15,7 +15,7 @@ ls ~/.tokens; command -v aws && aws sts get-caller-identity
 | Machine | `~/.tokens/` | AWS | Notes |
 |---|---|---|---|
 | NEH workstation | `favro`, `gh-ro`, `mailgun` | none | has `/home/user/code/neh*`; the SWS rows below cannot be used here — say so |
-| SWS machine | the above plus `grafanacloud`, `sentry`, `dockerhub`, `notion` | default profile → `SebastianLockwoodLowPriv` | has `~/code/sws-6` |
+| SWS machine | `favro`, `gh-ro`, `grafanacloud`, `sentry`, `dockerhub`, `notion` (no `mailgun`) | default profile → `SebastianLockwoodLowPriv` | has `~/code/sws-6` |
 
 Two file formats are in use: **env format** (`VAR=<token>`, load with `set -a; . ~/.tokens/x; set +a`)
 and **raw** (the bare key, load with `$(tr -d '[:space:]' < ~/.tokens/x)`). Check which one a file
@@ -64,7 +64,11 @@ Workstation convention only: on the hosts, `/usr/local/bin/mailgunSyncDomains.sh
 Symptom of a bad key: `401 Forbidden`. Wrong region: `404 Domain not found` for a domain that
 exists. Recipes: `neh/mailgun.md`. SWS does not use Mailgun.
 
-## SWS platform (SWS machine only — unverified from the NEH workstation since 2026-10-15)
+## SWS platform (SWS machine only)
+
+Verified on the SWS machine on 2026-10-23: all four files exist in the stated format, Grafana,
+Sentry and Notion answer, Docker Hub is logged in, `aws sts get-caller-identity` returns the
+low-priv role. Mint-page URLs are not re-checked (browser only).
 
 ### Grafana Cloud (metrics queries)
 
@@ -97,8 +101,8 @@ Expired/revoked token: queries return `401`; the instance ID never changes.
 | Save to | `~/.tokens/dockerhub`, env format, two lines: `USERNAME=<docker hub user>` and `TOKEN=<token>` |
 | Used as | `set -a; . ~/.tokens/dockerhub; set +a; echo "$TOKEN" \| docker login --username "$USERNAME" --password-stdin` |
 
-Needed before `task dev:provision` in `sws-6`: `starweb/sws6-app-dev`, `starweb/sws6-app-base` and
-`starweb/oauth-server` are private; every other image in `docker-compose.yml` is public. Missing
+Needed before `task dev:provision` in `sws-6`: `docker-compose.yml` pulls `starweb/sws6-app-dev`,
+`starweb/sws-mysql`, `starweb/sws-elasticmq` and `starweb/oauth-server` from the org; the rest is public. Missing
 login: `pull access denied` / `no such manifest`. The login is cached in `~/.docker/config.json`
 and only repeated after `docker logout` or a rotation; that file also holds an ECR login for
 `546532984119` that expires after 12 hours — unrelated to Docker Hub.

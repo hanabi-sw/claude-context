@@ -17,7 +17,7 @@ neh/                   Nordisk eHandel platform (Perl shop framework, GCP hosts,
   php-entrypoints.md   where PHP runs, kill-switch, /admin allowlist, phpMyAdmin
   auth-model.md        who can reach which URL, Apache merge-order traps, token login
   mailgun.md           shop mail delivery via Mailgun (postfix → Mailgun → recipient)
-sws/                   Starweb SWS platform (sws-6 on AWS: Beanstalk, Aurora, ES, SQS, Kubernetes)
+sws/                   Starweb SWS platform (sws-6 on AWS: Beanstalk, Aurora, ES, SQS, reverse proxy)
   prod-observability.md  read-only access and recipes for every prod signal source
   worker-queue-cron.md   Beanstalk worker / SQS / cron diagnosis
   local-dev.md           sws-6 Docker dev env and test suites
@@ -73,6 +73,6 @@ forever. Rules, enforced on every edit:
 | Machine | Has | Does not have |
 |---|---|---|
 | NEH workstation | `~/.tokens/{favro,gh-ro,mailgun}`, `/home/user/code/neh*`, VPN to NEH hosts | AWS, Grafana Cloud, Sentry, Docker Hub, Notion, `sws-6` |
-| SWS machine | the above tokens plus `grafanacloud sentry dockerhub notion`, AWS low-priv profile, `~/code/sws-6` | NEH host access |
+| SWS machine | `~/.tokens/{favro,gh-ro,grafanacloud,sentry,dockerhub,notion}`, AWS low-priv profile, `~/code/sws-6` | NEH host access, `mailgun` |
 
 `ls ~/.tokens` tells you which one you are on. Do not try the other machine's systems.
