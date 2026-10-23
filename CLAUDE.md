@@ -30,4 +30,4 @@ Always loaded (imported by `~/.claude/CLAUDE.md`). Open a doc only when its row 
 | `sws/worker-queue-cron.md` | `starwebserver.se/app/status/cron` warns, `sws6-production-worker` is Yellow/Red, the SQS backlog grows, queued jobs (order mails, ES indexing, Fortnox/Hogia/Ongoing, reports) are late, or an Aurora writer is pinned |
 | `sws/local-dev.md` | sets up or repairs the `sws-6` local Docker dev env or runs its PHPUnit suites |
 
-Not here: shop behaviour, order handling, templates, release process → `neh/readme.md`; per-customer code → `neh-plugins` (check the branch first).
+Not here: shop behaviour, order handling, templates, release process → `/home/user/code/neh/readme.md`; per-customer code → `neh-plugins` (check the branch first).
