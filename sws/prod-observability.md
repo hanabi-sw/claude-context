@@ -11,6 +11,7 @@ never do it yourself; guide the user** (`../tokens.md`).
   only. Never remote-write (`/api/prom/push`), never delete series.
 - AWS: `cloudwatch list-metrics|get-metric-data|get-metric-statistics`, Logs Insights,
   non-deleting `sqs receive-message` — on the default low-priv profile only.
+  IAM audit recipes (what a role uses vs. what it is granted) live in `../aws/policy-restriction.md`.
 - Prod ES API: **no access — never query it directly** (read/write can't be gated
   separately). Hand read-only queries to the user to run instead; see the ES internals
   section. ES *metrics* via CloudWatch are fine.

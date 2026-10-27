@@ -33,5 +33,7 @@ Always loaded (imported by `~/.claude/CLAUDE.md`). Open a doc only when its row 
 | `sws/worker-queue-cron.md` | `starwebserver.se/app/status/cron` warns, `sws6-production-worker` is Yellow/Red, the SQS backlog or DLQ grows, queued jobs (order mails, ES indexing, Fortnox/Hogia/Ongoing, sales reports / `generateReport`) are late or slow, or an Aurora writer is pinned |
 | `notion.md` | asks **where in Notion** a page/how-to belongs, what the doc standard (Diátaxis) is, whether something is already documented, or needs to read a Notion page (SWS machine only) |
 | `sws/local-dev.md` | sets up or repairs the `sws-6` local Docker dev env or runs its PHPUnit suites |
+| `aws/policy-restriction.md` | audits **what an AWS role/user actually uses** vs. what its policies grant, lists/enumerates policies, hunts over-privileged roles, or proves a policy detach is safe (Access Advisor, CloudTrail, Athena, auth-details dump, external-access analyzer) |
+| `aws/access-analyzer-unused.md` | wants a **whole-account list of unused roles, keys or permissions** (billed IAM Access Analyzer): cost, activate, query, caveats, when to delete it |
 
 Not here: shop behaviour, order handling, templates, release process → `/home/user/code/neh/readme.md`; per-customer code → `neh-plugins` (check the branch first).

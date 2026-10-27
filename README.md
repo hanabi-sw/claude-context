@@ -24,6 +24,9 @@ sws/                   Starweb SWS platform (sws-6 on AWS: Beanstalk, Aurora, ES
   local-dev.md           sws-6 Docker dev env and test suites
   s3-media-restore.md    restoring deleted media files from the static-assets bucket: identify, prove, restore, guardrails
   s3-media-preflight.sh  read-only companion: builds the restore manifests from the bucket's delete markers and proves them
+aws/                   AWS account 546532984119 (IAM, not platform-specific)
+  policy-restriction.md    read-only IAM audit rulebook: what a role uses vs. what it is granted, over-privilege hunt, safe detach
+  access-analyzer-unused.md  the billed unused-access analyzer: cost, activate, query, when to delete
 HANDOVER-*.md          temporary: work handed to the agent on the other machine; deleted when done
 ```
 
