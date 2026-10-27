@@ -22,7 +22,8 @@ sws/                   Starweb SWS platform (sws-6 on AWS: Beanstalk, Aurora, ES
   prod-observability.md  read-only access and recipes for every prod signal source
   worker-queue-cron.md   Beanstalk worker / SQS / cron diagnosis
   local-dev.md           sws-6 Docker dev env and test suites
-  s3-media-restore.md    static-assets bucket: versions, delete markers, restoring deleted media files
+  s3-media-restore.md    restoring deleted media files from the static-assets bucket: identify, prove, restore, guardrails
+  s3-media-preflight.sh  read-only companion: builds the restore manifests from the bucket's delete markers and proves them
 HANDOVER-*.md          temporary: work handed to the agent on the other machine; deleted when done
 ```
 
