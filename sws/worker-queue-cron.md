@@ -69,7 +69,9 @@ metrics). Health `RequestCount: 0` on worker instances is normal (sqsd traffic i
    The newest `ended in …` line is the status page's timestamp (in-body CEST, `@timestamp` UTC).
 2. **What the worker was doing when it froze** — `app-general.log` by logger:
    `filter @logStream = 'app-general.log' | parse @message /\] \[(?<logger>[^\]]+)\] (?<level>[A-Z]+): / | stats count() by logger, level | sort count desc`
-   over the 15 min before the freeze; then read the newest 60 lines of that window.
+   over the 15 min before the freeze; then read the newest 60 lines of that window. If
+   `AWS/ES IndexingRate` is up while `addProductToElasticsearchJob` lines/min stay flat, the
+   writer is not on the worker — see the write-storm signature in `prod-observability.md`.
 3. **Who hammers the DB** — Performance Insights works on the low-priv role:
 
 ```bash
@@ -151,24 +153,12 @@ aws pi get-dimension-key-details --service-type RDS --identifier "$RID" --group 
   date the messages (`SentTimestamp` from `--attribute-names All`) before linking them to
   today's symptom.
 
-## Reference incident — 2026-10-07 (starved)
+## Incident signatures
 
-Status page warned at 11:49 CEST (last cron 11:18:07 CEST = 09:18:07 UTC). At 09:18:54 UTC
-shop `jabb` requested an OrderSummaryByDay sales report over 86,263 orders
-(2023-01-01 → 2026-09-30, status 2). `QueueManager::enqueueNewReport` produced 1,726
-`generateReport` messages at once; each page job re-runs the filtered order `COUNT(*)` with
-address joins (`OrderDbFetcher::fetchFiltered` via `OrderHandler::getOrdersFromQueryParameters`)
-plus the 50-order fetch. Signature: in-flight 10–12, deletes 150–180 per 5 min, worker ASG
-CPU 2.3 %, `sws-6-2-aurora-instance-4` 22 % → 99 % CPU with `SelectLatency` 0.6 → 6.5 ms,
-PI `db.user` = one shop user (8.9 of 9 AAS), `db.host` = the two worker IPs, wait events
-`wait/io/table/sql/handler` + CPU. ES, Redis and `sws-6-1-aurora` were normal. Throughput
-~160 pages per 5 min → ~55 min for the report; backlog peaked above 8,300 messages and all
-other jobs ran 45–60 min late. The `OrderItemsDiscountMerger` `RuntimeException … cannot be
-merged` errors that appear alongside are per-order validation in
-`AbstractReportGenerator::isOrderValid` (caught, logged, order skipped) — noise, not a
-failure. Follow-up: THE-24659 fetches report pages by id instead of re-counting per page
-(`12abfc217b` behind a flag, flag removal `d67f2463b8` on
-`chore/THE-24659-remove-sales-report-pages-by-ids-flag`; not on `origin/master` as of
-2026-10-23 — check `git branch -r --contains 12abfc217b`). Still open: cap report-page
-concurrency (separate queue or per-shop lock) and alarm on SQS
-`ApproximateAgeOfOldestMessage` with visible > 0 rather than on cron freshness.
+- **2026-10-07 starved (sales-report fan-out):** in-flight 10–12, deletes 150–180 per 5 min,
+  worker CPU 2 %, one Aurora writer at 99 % with PI `db.user` = one shop user, backlog > 8k,
+  every other job 45–60 min late. Cause: one `OrderSummaryByDay` report over 86k orders fanned
+  out 1,726 `generateReport` pages, each re-running the filtered `COUNT(*)`. The
+  `OrderItemsDiscountMerger … cannot be merged` errors alongside are per-order validation noise.
+  Fixed by THE-24659 (pages by id). Still open: cap report-page concurrency; alarm on
+  `ApproximateAgeOfOldestMessage` with visible > 0 instead of cron freshness.

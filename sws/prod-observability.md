@@ -1,7 +1,7 @@
 # Prod observability — READ-ONLY
 
 SWS only. Read before querying any SWS production or staging signal source.
-Verified against AWS `546532984119`, Grafana Cloud, Sentry and `reverse-proxy@59a523b` on 2026-10-23.
+Verified against AWS `546532984119`, Grafana Cloud, Sentry and `reverse-proxy@59a523b` on 2026-10-27.
 
 Everything in this file is read-only access. **Ask before any write**, including touching
 the `prod-admin` / `prod-pulumi` AWS profiles. **Token minting/rotation is user-only —
@@ -120,7 +120,7 @@ specs=[("il","IndexingLatency","Average"),("ilmax","IndexingLatency","Maximum"),
  ("slmax","SearchLatency","Maximum"),("cpu","CPUUtilization","Maximum"),
  ("jvm","JVMMemoryPressure","Maximum")]
 print(json.dumps([{"Id":i,"MetricStat":{"Metric":{"Namespace":"AWS/ES","MetricName":m,
- "Dimensions":D},"Period":300,"Stat":s}} for i,m,s in specs]))
+ "Dimensions":D},"Period":300,"Stat":s}} for i,m,s in specs]))   # Period 60 works — use it for an alarm window
 EOF
 aws cloudwatch get-metric-data --region eu-central-1 \
   --start-time "$(date -u -d '7 hours ago' +%Y-%m-%dT%H:%M:%SZ)" \
@@ -132,7 +132,9 @@ Discovery: `aws cloudwatch list-metrics --namespace AWS/ES ...` (metric names, d
 
 **Gotchas:**
 - **Node/domain trap:** `ClientId`+`DomainName` = domain aggregate; +`NodeId` = per data
-  node. The aggregate is NOT the sum of the node series — never reconstruct one from the other.
+  node. Averages and latencies cannot be rebuilt from node series. `IndexingRate`/`SearchRate`
+  with `Sum` do add up (replica ops count on their node), so a 10× jump on exactly two nodes
+  = one shard's primary + replica.
 - Prod node IDs: `-DaP05VUSqeDWIPMYA5Mdw`, `Q8tgjPC3QHaeACyfzDNAKQ`, `eNWAI04ES2ueiOIbf3euCw`,
   `q46Os8YPSXO38q9XTafOAA`. Quote `-DaP05…` — the leading dash parses as a flag.
 - **`get-metric-data` returns timestamps NEWEST-FIRST** — sort before computing deltas, or
@@ -152,7 +154,7 @@ Discovery: `aws cloudwatch list-metrics --namespace AWS/ES ...` (metric names, d
 | write-reject deltas (all four) | 0 | any |
 | `ClusterIndexWritesBlocked` | 0 | 1 = writes rejected outright |
 | `FreeStorageSpace` | well above 20 GB (≈19.8 GB min on 2026-10-23 — at the line) | near low-watermark ⇒ ES blocks writes |
-| `IndexingLatency` | single-digit ms | — |
+| `IndexingRate` (Sum/min) | ≈ 2× the worker's "Adding product" lines/min (P+R); `IndexingLatency` single-digit ms | 10× on one shard's two nodes, CPU 99 % there, search queue low, no rejections ⇒ **write storm**: find the writer (Logs + access-log recipes below), don't restart the node the alarm text names |
 
 Also published (and absent from Grafana): `ShardCount`, `Shards.active`, `2xx/4xx/5xx`,
 `JVMGCOldCollectionTime`, `SysMemoryUtilization`, `OpenContexts`, `ThreadpoolSearchThreads`,
@@ -190,6 +192,9 @@ curl -s "$ES/_stats/search?level=shards&pretty"             # per-shard-copy que
 curl -s "$ES/_cat/thread_pool/search?v&h=node_name,active,queue,rejected"
 ```
 
+Rule out a manual `es:bulk-reindex` (console-only output, nothing in CloudWatch) yourself:
+`aws ssm describe-sessions --state History --filters key=InvokedAfter,value=<ISO>` (low-priv OK).
+
 Node map (2026-08-31; the CloudWatch NodeIds are unchanged on 2026-10-23 — re-derive the
 shard column with the two `_cat` commands if AWS replaces a node):
 
@@ -219,14 +224,10 @@ shard column with the two `_cat` commands if AWS replaces a node):
 `sws6-production-worker` (`e-mfsrhccbha`). CPU/instances via `CPUUtilization` with the
 `AutoScalingGroupName` dimension.
 
-**Query:**
-
-```bash
-# find live awseb ASGs (Beanstalk names: awseb-e-<envid>-stack-...)
-aws cloudwatch list-metrics --namespace AWS/EC2 --metric-name CPUUtilization \
-  --dimensions Name=AutoScalingGroupName \
-  --query 'Metrics[].Dimensions[0].Value' --output text | tr '\t' '\n' | sort -u | grep awseb
-```
+**Query:** `CPUUtilization` by `InstanceId` for per-instance CPU. Web instance IDs are the
+per-instance stream names in the sub-groups (`…/shop-api-v2`, `…/nets`, …); worker IDs come
+from `describe-auto-scaling-groups` on the ASG below. A name grep for "production" misses
+the web ASG — awseb ASG names carry only the env ID.
 
 **Gotchas:**
 - Web ASG: `awseb-e-m5mpqmrsgz-stack-AWSEBAutoScalingGroup-UkGGt5Rvdn6T` (unchanged since
@@ -250,13 +251,16 @@ aws cloudwatch list-metrics --namespace AWS/EC2 --metric-name CPUUtilization \
 |---|---|
 | SWS prod app logs (live) | `/starweb/sws/starwebserver.se` (streams `app-general.log`, `app-error.log`, `app-api.log`, `app-cron.log`, …) + sub-groups `…/que-messages`, `…/shop-api-v2`, `…/shop-fortnox`, `…/ongoing`, `…/klarna-kco3`, `…/qliro-checkout`, … (`describe-log-groups --log-group-name-prefix /starweb/sws`) |
 | SWS staging | `/starweb/sws/sws-staging.se` + the same sub-groups |
-| ES domain errors/warnings | `/aws/aes/domains/sws-production-74/application-logs` |
+| Who writes to ES | worker product jobs log `[addProductToElasticsearchJob] Adding product` in `app-general.log`; `EsRelatedChangeHandler` (pricelist create, stock-location, VAT delete, attribute, manufacturer, review) rewrites the **whole shop inline in the web request**, scroll size 10, logs nothing, keeps running after the client disconnects; only the tag/tag-option updaters log, to `…/que-messages` ("Processed N/M products for tag option X") |
+| ES domain logs | `/aws/aes/domains/sws-production-74/application-logs` — DEBUG `TransportSearchAction` noise + "Result window is too large" (clients paging past 10k); says nothing about writes |
 | Reverse proxy container logs — **no access logs** (those are S3-only, see below) | `/ecs/reverse-proxy`, `/ecs/reverse-proxy-https`, `…-log-shipper`, `…-crowdsec-appsec` |
 | `/aws/elasticbeanstalk/sws6-*` | deploy-time engine logs only (`eb-engine.log` on each deploy), no app logs — don't use for troubleshooting |
 
 **Gotchas:**
 - App log messages carry **CEST timestamps in-body**; Insights `@timestamp` is UTC.
-- Handy parse: `parse @message /\] \[(?<logger>[^\]]+)\] (?<level>ERROR|CRITICAL): (?<msg>.*)/ | stats count() by logger`
+- ES writes per shop per 5 min: `filter @logStream = "app-general.log" and @message like /addProductToElasticsearchJob/ | parse @message /"shopIdCode":"(?<shop>[^"]+)"/ | stats count() as n by bin(5m) as b, shop | sort b asc`
+- Whole family at a glance: `start-query --log-group-names <all /starweb/sws/starwebserver.se* groups>` with `stats count() as n by @log, @logStream | sort n desc`.
+- Insights rejects `sort bin(5m)` and `sort count desc` — alias first (`as b`, `as n`), then sort the alias.
 
 ---
 
@@ -315,11 +319,14 @@ awk -F'"' '{split($3,a," "); if(a[1]!=403 && $2 ~ /(%3B|%253B|;)amp|amp(%3B|%253
 awk -F'"' '{split($3,a," "); if(a[1]!=403 && $2 !~ /get-autocomplete/) print $1}' $D/search.log | awk '{print $2}' | sort | uniq -c | sort -rn | head
 awk -F'"' '{split($3,a," "); if(a[1]!=403 && $2 !~ /get-autocomplete/) print $6}' $D/search.log | sort | uniq -c | sort -rn | head
 
-# heaviest queries by upstream time (rt=)
-awk -F'"' '{split($3,a," "); if(a[1]==200 && $2 !~ /get-autocomplete/){match($0,/rt=[0-9.]+/); print substr($0,RSTART+3,RLENGTH-3), $2}}' $D/search.log | sort -rn | head
+# heaviest queries by upstream time — match rt= as a whole field (a bare regex also hits uct=)
+awk -F'"' '{split($3,a," "); if(a[1]==200 && $2 !~ /get-autocomplete/){n=split($0,f," "); for(i=1;i<=n;i++) if(f[i] ~ /^rt=/){print substr(f[i],4), $2; break}}}' $D/search.log | sort -rn | head
 
-# burst abuse: IPs with ≥10 autocomplete requests in a single second
-awk -F'"' '$2 ~ /get-autocomplete/ {split($1,h," "); print h[2], h[5]}' $D/search.log | sort | uniq -c | awk '$1>=10' | sort -rn
+# who writes: write methods per minute by vhost, status, path prefix — compare a baseline minute with the first burst minute
+grep -E '"(POST|PUT|PATCH|DELETE) ' $D/access.log | awk -F'"' '{split($3,a," "); split($2,r," "); split(r[2],p,"/"); split($1,h," "); print h[1], a[1], r[1], "/"p[2]"/"p[3]}' | sort | uniq -c | sort -rn | head -20
+
+# long or aborted requests (rt ≥ 30 s, or 499): the line is written when the request ENDS
+awk '{for(i=1;i<=NF;i++) if($i ~ /^rt=/){if(substr($i,4)+0>=30) print; break}}' $D/access.log | head
 ```
 
 Reading the results:
@@ -329,16 +336,13 @@ Reading the results:
 - **Self-identifying crawlers** (UA token, e.g. `GeedoShopProductFinder`) may sit in a
   single /24 — compare `grep -c '<token>'` with `grep -cE '^[^ ]+ <prefix>\.'`; if equal,
   a CIDR limit is enough.
+- **A long request lands in a later minute than it started.** `499` with a round `rt`
+  (30, 100) is the client's own timeout — PHP keeps running, and a retry starts a second copy.
 
 **Gotchas:**
-- `/tmp` is a 1 GB tmpfs — download to `~/.cache/`.
-- **Cache cleanup: ask, don't auto-delete.** After each troubleshooting section wraps up —
-  or when the disk backing `~/.cache` is approaching full — ask the user whether to clean
-  all cache dirs for the current troubleshooting; never delete cached downloads unprompted.
-- **Don't stream/grep the download.** For anything bigger than the recent-window recipe
-  above (hours, full days), run the `aws s3 cp` to `~/.cache/` as a background task with a
-  watcher that fires on completion, and keep troubleshooting other threads in the
-  background while it runs; grep the local file once it lands.
+- `/tmp` is a 1 GB tmpfs — download to `~/.cache/`. Never delete cached downloads unprompted — ask.
+- **Don't stream/grep the download.** Anything bigger than the recent-window recipe runs as a
+  background `aws s3 cp` to `~/.cache/`; grep the local file once it lands.
 - Line format: `vhost client_ip - - [ts +0000] "METHOD /path" status bytes "referer" "UA" rt=… uct=… up_ip=… tls=…`
 - **Timezone: everything here is UTC** — S3 paths and in-line timestamps (`+0000`) alike.
   But SWS app logs are **CEST in-body** (see Logs section): correlating access log ↔ app
@@ -359,11 +363,13 @@ Reading the results:
 
 ---
 
-## Reference incident — 2026-08-31 (ES search saturation by a scraper botnet)
+## Incident signatures
 
-Search-bound, indexing fine throughout: `ThreadpoolSearchQueue` peaked 872/958,
-`ThreadpoolSearchRejected` +1,170 domain-wide, CPU 90–99 %; all write-reject counters stayed
-0, `FreeStorageSpace` ~19 GB. Node CPU skewed: `-DaP05…` 86–99 % vs `Q8tgjPC3…` 49–77 %
-(shard-0 hotness). Root cause: a distributed scraper looping junk `/search` queries; blocked
-in the reverse proxy with a pattern file (`block_junk_search.conf` at the time). Post-block
-baseline: SearchQueue ~0, SearchLatency avg ~26 ms, node CPU 12–40 %.
+- **2026-08-31 search saturation (scraper botnet):** `ThreadpoolSearchQueue` 872/958,
+  `ThreadpoolSearchRejected` +1,170, CPU 90–99 % skewed to shard-0 nodes, write counters 0.
+  Cause: distributed scraper looping junk `/search`; fixed with a proxy pattern block.
+- **2026-10-27 write storm (inline pricelist reindex):** `IndexingRate` 1k → 12–19k/min on
+  shard 0's two nodes only, CPU 99 % there, search queue ≤ 50, no rejections, worker/web CPU
+  and app logs flat. Cause: one Shop API client `POST /api/v2/pricelists` ×9 (499 at 100 s,
+  retried every 5 min; each run ≈ 30 min). Found via the access-log write histogram
+  (baseline minute vs first burst minute) and the long/499 scan.
