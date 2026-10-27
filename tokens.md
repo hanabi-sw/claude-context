@@ -3,7 +3,9 @@
 Both platforms. Read when a recipe needs an API token, a call returns `401`/`403`, or a token is
 missing, expired or under-scoped. **Minting, rotating or revoking a token is user-only: Claude never
 creates one.** Guide the user through the page, scopes, file and var name below and wait for them
-to save it. Tokens get the minimum read scopes listed. Never echo a token, paste it into a URL,
+to save it. Every token is created **read-only** with the minimum scopes listed and with a **limited
+expiry** (pick the shortest the service offers that covers the work, never "no expiration"); where a
+service offers neither, say so in its section. Never echo a token, paste it into a URL,
 a doc, a chat reply or a commit — it lives in its file, which gets sourced or read into a variable.
 
 ## Which machine am I on?
@@ -15,7 +17,7 @@ ls ~/.tokens; command -v aws && aws sts get-caller-identity
 | Machine | `~/.tokens/` | AWS | Notes |
 |---|---|---|---|
 | NEH workstation | `favro`, `gh-ro`, `mailgun` | none | has `/home/user/code/neh*`; the SWS rows below cannot be used here — say so |
-| SWS machine | `favro`, `gh-ro`, `grafanacloud`, `sentry`, `dockerhub`, `notion` (no `mailgun`) | default profile → `SebastianLockwoodLowPriv` | has `~/code/sws-6` |
+| SWS machine | `favro`, `gh-ro`, `grafanacloud`, `sentry`, `dockerhub`, `notion`, `circleci` (no `mailgun`) | default profile → `SebastianLockwoodLowPriv` | has `~/code/sws-6` |
 
 Two file formats are in use: **env format** (`VAR=<token>`, load with `set -a; . ~/.tokens/x; set +a`)
 and **raw** (the bare key, load with `$(tr -d '[:space:]' < ~/.tokens/x)`). Check which one a file
@@ -66,8 +68,8 @@ exists. Recipes: `neh/mailgun.md`. SWS does not use Mailgun.
 
 ## SWS platform (SWS machine only)
 
-Verified on the SWS machine on 2026-10-23: all four files exist in the stated format, Grafana,
-Sentry and Notion answer, Docker Hub is logged in, `aws sts get-caller-identity` returns the
+Verified on the SWS machine on 2026-10-23 (CircleCI on 2026-10-27): all files exist in the stated format, Grafana,
+Sentry, Notion and CircleCI answer, Docker Hub is logged in, `aws sts get-caller-identity` returns the
 low-priv role. Mint-page URLs are not re-checked (browser only).
 
 ### Grafana Cloud (metrics queries)
@@ -125,6 +127,23 @@ An integration only sees pages it has been connected to: page **⋯ → Connecti
 `thea-sw-dev-nova1`** (child pages inherit). Bad or revoked token: `401` `{"code":"unauthorized"}`.
 Page not connected: `404 object_not_found` or empty `search` results — fix the connection, not the
 token. Verify with `GET /v1/users/me` (returns the bot name and `workspace_name`).
+
+### CircleCI (pipeline / workflow / job status, build logs)
+
+| | |
+|---|---|
+| Generate at | <https://app.circleci.com/settings/user/tokens> — **personal API token** (account `hanabi-sw`, member of the `starweb` org) |
+| Scopes | none selectable and no expiry setting — a personal token carries the full rights of the user and lives until revoked, so the read-only rule is policy, not enforced: `GET` only, never trigger, rerun, cancel or approve anything; revoke it on the same page when the work is done |
+| Save to | `~/.tokens/circleci`, **raw** token (no `VAR=` prefix) |
+| Used as | `curl -H "Circle-Token: $(tr -d '[:space:]' < ~/.tokens/circleci)" https://circleci.com/api/v2/…` with project slug `gh/starweb/<repo>` |
+
+A repo with a `.circleci/` folder most likely has a pipeline here (`ls -d ~/code/*/.circleci`).
+Verify with `GET /api/v2/me` (returns `login`). Pipelines of a repo:
+`GET /api/v2/project/gh/starweb/<repo>/pipeline`, then `/pipeline/<id>/workflow` and
+`/workflow/<id>/job`. Bad or revoked token: `401` `{"message":"Unauthorized"}`; `404 Project not found`
+= wrong slug or the account is not in the org, not a token problem. Approval gates
+(`reverse-proxy` deploys) are **user-only**: hand over the workflow URL
+`https://app.circleci.com/pipelines/github/starweb/<repo>/<number>`.
 
 ### AWS (CloudWatch / S3 / SQS / RDS reads)
 

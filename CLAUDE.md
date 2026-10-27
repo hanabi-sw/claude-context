@@ -7,10 +7,10 @@ Always loaded (imported by `~/.claude/CLAUDE.md`). Open a doc only when its row 
 
 - Every external system is **read-only** from Claude; anything that writes is handed to the user as a command.
 - Tokens live in `~/.tokens/<service>`, one file each. Never echo one, put it in a URL, a doc or a commit.
-  Minting, rotating or revoking a token is **user-only**; `tokens.md` has the page and scopes per service.
+  Minting, rotating or revoking a token is **user-only**, always **read-only** with a **limited expiry**; `tokens.md` has the page and scopes per service.
 - Which machine is this? `ls ~/.tokens` (and `aws sts get-caller-identity` if `aws` exists):
   **NEH workstation** = `favro gh-ro mailgun` only, no AWS, has the `neh*` repos;
-  **SWS machine** = `favro gh-ro grafanacloud sentry dockerhub notion` (no `mailgun`) + the AWS low-priv profile, has `~/code/sws-6`.
+  **SWS machine** = `favro gh-ro grafanacloud sentry dockerhub notion circleci` (no `mailgun`) + the AWS low-priv profile, has `~/code/sws-6`.
   Do not attempt the other machine's systems; say they are unavailable here.
 - Repo clones here: `/home/user/code/{neh,neh-plugins,neh-infrastructure,neh-monitoring}` — their own `CLAUDE.md`/readme
   come first for code work. Editing this knowledge base: `README.md`.
