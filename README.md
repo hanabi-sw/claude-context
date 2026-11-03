@@ -27,6 +27,7 @@ sws/                   Starweb SWS platform (sws-6 on AWS: Beanstalk, Aurora, ES
 aws/                   AWS account 546532984119 (IAM, not platform-specific)
   policy-restriction.md    read-only IAM audit rulebook: what a role uses vs. what it is granted, over-privilege hunt, safe detach
   access-analyzer-unused.md  the billed unused-access analyzer: cost, activate, query, when to delete
+  ami-kernel.md            which kernel an AMI or host runs: boot console, AMI → AL2023 release notes, ALAS compare
 HANDOVER-*.md          temporary: work handed to the agent on the other machine; deleted when done
 ```
 
