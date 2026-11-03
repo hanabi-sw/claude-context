@@ -35,5 +35,6 @@ Always loaded (imported by `~/.claude/CLAUDE.md`). Open a doc only when its row 
 | `sws/local-dev.md` | sets up or repairs the `sws-6` local Docker dev env or runs its PHPUnit suites |
 | `aws/policy-restriction.md` | audits **what an AWS role/user actually uses** vs. what its policies grant, lists/enumerates policies, hunts over-privileged roles, or proves a policy detach is safe (Access Advisor, CloudTrail, Athena, auth-details dump, external-access analyzer) |
 | `aws/access-analyzer-unused.md` | wants a **whole-account list of unused roles, keys or permissions** (billed IAM Access Analyzer): cost, activate, query, caveats, when to delete it |
+| `aws/ami-kernel.md` | asks **which kernel an AMI or EC2 host runs**, whether an AMI/host is patched for a kernel CVE/ALAS, or picks a target AMI for a kernel fix (console `Kernel` line, AL2023 release notes) |
 
 Not here: shop behaviour, order handling, templates, release process → `/home/user/code/neh/readme.md`; per-customer code → `neh-plugins` (check the branch first).
