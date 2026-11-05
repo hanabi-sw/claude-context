@@ -13,6 +13,7 @@ CLAUDE.md              always-loaded lookup table (≤ 60 lines)
 README.md              this file
 tokens.md              every token: file, format, auth recipe, scopes, mint page, failure symptoms
 favro.md               Favro tickets and the Day-to-day board (both platforms)
+depcat.md              depcat server reads: vulns, reboots, stale hosts, who runs package X (both platforms)
 notion.md              Notion workspace map, read-only lookups, where a new page belongs (SWS machine)
 neh/                   Nordisk eHandel platform (Perl shop framework, GCP hosts, neh* repos)
   php-entrypoints.md   where PHP runs, kill-switch, /admin allowlist, phpMyAdmin
@@ -79,7 +80,7 @@ forever. Rules, enforced on every edit:
 
 | Machine | Has | Does not have |
 |---|---|---|
-| NEH workstation | `~/.tokens/{favro,gh-ro,mailgun}`, `/home/user/code/neh*`, VPN to NEH hosts | AWS, Grafana Cloud, Sentry, Docker Hub, Notion, `sws-6` |
+| NEH workstation | `~/.tokens/` with `mailgun` among others (`favro`, `gh-ro`, `depcat`, …), `/home/user/code/neh*`, VPN to NEH hosts | AWS, Grafana Cloud, Sentry, Docker Hub, Notion, `sws-6` |
 | SWS machine | `~/.tokens/{favro,gh-ro,grafanacloud,sentry,dockerhub,notion}`, AWS low-priv profile, `~/code/sws-6` | NEH host access, `mailgun` |
 
 `ls ~/.tokens` tells you which one you are on. Do not try the other machine's systems.
