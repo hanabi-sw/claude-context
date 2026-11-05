@@ -16,7 +16,7 @@ ls ~/.tokens; command -v aws && aws sts get-caller-identity
 
 | Machine | `~/.tokens/` | AWS | Notes |
 |---|---|---|---|
-| NEH workstation | `favro`, `gh-ro`, `mailgun` | none | has `/home/user/code/neh*`; the SWS rows below cannot be used here — say so |
+| NEH workstation | `mailgun` plus others (`favro`, `gh-ro`, `depcat`, …); `mailgun` is the tell | none | has `/home/user/code/neh*`; the SWS rows below cannot be used here — say so |
 | SWS machine | `favro`, `gh-ro`, `grafanacloud`, `sentry`, `dockerhub`, `notion`, `circleci` (no `mailgun`) | default profile → `SebastianLockwoodLowPriv` | has `~/code/sws-6` |
 
 Two file formats are in use: **env format** (`VAR=<token>`, load with `set -a; . ~/.tokens/x; set +a`)
@@ -49,6 +49,28 @@ Can read PRs, issues and branches; `gh pr create` and `gh pr comment` fail with
 `Resource not accessible by personal access token` — the user opens and describes PRs (hand over
 `https://github.com/starweb/<repo>/pull/new/<branch>` plus the body). **Never delete a remote
 branch**: it auto-closes the branch's PR and this token cannot reopen it. Push new branches with `-u`.
+
+### depcat (dependency inventory and vulnerability reads)
+
+| | |
+|---|---|
+| Generate at | no web page: `kubectl exec` into the server pod on a machine with **k8s-dev** cluster access (the NEH workstation has none). Only the dev cluster is live. |
+| Scopes | `--scope read` only — never `ingest` (that is a host's credential and cannot read) |
+| Expiry | `--expires 30d` |
+| Comment | **must name the hostname of the machine the token will live on** (`hostname` there), plus who and when: a read token has no subject binding, so in `token list` the comment is the only field that says which machine holds it when it leaks or must be revoked |
+| Save to | `~/.tokens/depcat`, env format `DEPCAT_READ_TOKEN=<token>` |
+| Used as | `Authorization: Bearer $DEPCAT_READ_TOKEN` against `https://depcat.k8s-dev.sw-test.se` (tailnet); recipes in `depcat.md` |
+
+```sh
+kubectl -n depcat exec deploy/depcat-server -c depcat-server -- /depcat-server token create \
+  --scope read --expires 30d --comment "read sl <hostname> 2026-11-05"
+```
+
+stdout is the secret (`dpc_` + 22 characters), printed once; only its sha256 is stored, so a lost token is
+rotated (`token rotate --id <n>`), never re-read. `-c depcat-server` is required: the pods are meshed and
+`kubectl` otherwise picks the Linkerd proxy. `403 token scope ingest cannot read` = an ingest token on a read
+route; `401` = expired, revoked or mistyped.
+Canonical: <https://github.com/starweb/depcat/blob/main/docs/how-to/issue-a-client-token.md>.
 
 ## NEH platform
 
