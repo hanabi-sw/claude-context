@@ -2,7 +2,7 @@
 
 Both platforms. Read when the task asks what is installed where, which hosts need a reboot, which hosts stopped
 reporting, or what is vulnerable, from the depcat server instead of ssh-ing around.
-Verified against depcat@86a4234 on 2026-11-05.
+Verified against depcat v0.3.0 on 2026-11-06 (prod endpoints answer /healthz; read routes not yet tried with a prod token).
 
 depcat (`starweb/depcat`, clone `/home/user/code/depcat`) collects a daily report per host (NEH hosts via the
 `depcat` role in `neh-infrastructure`; `lucio` by hand) and per CI build, and the server matches every package
@@ -19,21 +19,23 @@ When this page and they disagree, they win. Most used:
 
 ## Observability: querying depcat
 
-**Only the dev cluster is live** (k8s-dev). There is no prod depcat server yet (it comes with its own release PR),
-so everything below queries dev. `environment=prod` in a query filters on the subject's environment (lucio
-reports as `prod`), not on which server answers.
+**k8s-prod is the default server** (depcat-server v0.3.0 since 2026-11-06): every NEH host, dev and prod, reports
+there through the `depcat` role, so query prod. k8s-dev is the server's own test stack and is normally never used;
+reach for it only when the task is about testing the server itself (same URLs with `k8s-dev` in place of
+`k8s-prod`, its own tokens). `environment=prod` in a query filters on the subject's environment, not on which
+server answers. `lucio` was installed by hand against k8s-dev and still reports there until it is repointed.
 
 | Listener | URL | Answers |
 |---|---|---|
-| internal read API (tailnet) | `https://depcat.k8s-dev.sw-test.se` | every `GET /v1/…` read route, with a `read` token |
-| public ingest (dev) | `https://depcat.k8s-dev.external.sw-test.se` | only `POST /v1/reports` and `GET /healthz`; everything else 404 by design |
+| internal read API (tailnet) | `https://depcat.k8s-prod.sw-test.se` | every `GET /v1/…` read route, with a `read` token |
+| public ingest | `https://depcat.k8s-prod.external.sw-test.se` | only `POST /v1/reports` and `GET /healthz`; everything else 404 by design |
 
 Reads need a `read` token in `~/.tokens/depcat` (see `tokens.md` §depcat). An ingest token on a read route gets
 `403`. Read-only by nature: nothing below changes the server.
 
 ```sh
 set -a; . ~/.tokens/depcat; set +a          # DEPCAT_READ_TOKEN
-DEPCAT=https://depcat.k8s-dev.sw-test.se
+DEPCAT=https://depcat.k8s-prod.sw-test.se
 q() { curl -sf -H "Authorization: Bearer $DEPCAT_READ_TOKEN" "$DEPCAT$1"; }
 ```
 
@@ -47,8 +49,8 @@ q() { curl -sf -H "Authorization: Bearer $DEPCAT_READ_TOKEN" "$DEPCAT$1"; }
 | Who runs package X? | `q '/v1/packages?name=openssl&type=deb' \| jq -r '.packages[] \| "\(.system)/\(.subject)\t\(.version)"'` (`*` suffix = prefix match) |
 | Everything on one host | `q '/v1/hosts/nehdev-cust-tx?system=neh' \| jq '{os: .host.os.pretty_name, packages: (.packages \| length)}'` |
 
-Subjects reporting today: `neh/host/nehdev-cust-tx` (role, once deployed) and `local/host/lucio` (by hand,
-Debian 10). `system` is part of every subject: query lucio with `system=local`, not `neh`.
+Subjects reporting to prod: every `neh/host/<instance>` once the role is deployed with -t depcat. `local/host/lucio`
+(by hand, Debian 10) is on k8s-dev for now. `system` is part of every subject: query lucio with `system=local`, not `neh`.
 
 ### Before trusting an empty answer
 

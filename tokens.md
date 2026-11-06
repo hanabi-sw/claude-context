@@ -54,16 +54,16 @@ branch**: it auto-closes the branch's PR and this token cannot reopen it. Push n
 
 | | |
 |---|---|
-| Generate at | no web page: `kubectl exec` into the server pod on a machine with **k8s-dev** cluster access (the NEH workstation has none). Only the dev cluster is live. |
+| Generate at | no web page: `kubectl exec` into the server pod on a machine with **k8s-prod** cluster access (the NEH workstation has none). k8s-prod is the server every NEH host reports to; k8s-dev is normally never used. |
 | Scopes | `--scope read` only — never `ingest` (that is a host's credential and cannot read) |
-| Expiry | `--expires 30d` |
+| Expiry | `--expires 90d` |
 | Comment | **must name the hostname of the machine the token will live on** (`hostname` there), plus who and when: a read token has no subject binding, so in `token list` the comment is the only field that says which machine holds it when it leaks or must be revoked |
 | Save to | `~/.tokens/depcat`, env format `DEPCAT_READ_TOKEN=<token>` |
-| Used as | `Authorization: Bearer $DEPCAT_READ_TOKEN` against `https://depcat.k8s-dev.sw-test.se` (tailnet); recipes in `depcat.md` |
+| Used as | `Authorization: Bearer $DEPCAT_READ_TOKEN` against `https://depcat.k8s-prod.sw-test.se` (tailnet); recipes in `depcat.md` |
 
 ```sh
 kubectl -n depcat exec deploy/depcat-server -c depcat-server -- /depcat-server token create \
-  --scope read --expires 30d --comment "read sl <hostname> 2026-11-05"
+  --scope read --expires 90d --comment "read sl <hostname> <date>"
 ```
 
 stdout is the secret (`dpc_` + 22 characters), printed once; only its sha256 is stored, so a lost token is
