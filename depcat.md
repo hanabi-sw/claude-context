@@ -2,7 +2,7 @@
 
 Both platforms. Read when the task asks what is installed where, which hosts need a reboot, which hosts stopped
 reporting, or what is vulnerable, from the depcat server instead of ssh-ing around.
-Verified against depcat v0.3.0 on 2026-11-06 (prod endpoints answer /healthz; read routes not yet tried with a prod token).
+Verified against depcat v0.3.0 on k8s-prod on 2026-11-06 (read token: `/v1/hosts`, `/v1/vulns` answer 200).
 
 depcat (`starweb/depcat`, clone `/home/user/code/depcat`) collects a daily report per host (NEH hosts via the
 `depcat` role in `neh-infrastructure`; `lucio` by hand) and per CI build, and the server matches every package
