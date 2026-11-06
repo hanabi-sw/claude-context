@@ -14,6 +14,7 @@ Always loaded (imported by `~/.claude/CLAUDE.md`). Open a doc only when its row 
   Do not attempt the other machine's systems; say they are unavailable here.
 - Repo clones here: `/home/user/code/{neh,neh-plugins,neh-infrastructure,neh-monitoring}` — their own `CLAUDE.md`/readme
   come first for code work. Editing this knowledge base: `README.md`.
+- Git: always `git pull` (fast-forward/rebase) right before every `git push`, in every repo, including this one.
 
 ## When the task… → open
 
